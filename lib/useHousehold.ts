@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SEED_PLANS } from "@/data/dietPlans";
 import { HOUSEHOLD_ID } from "./config";
-import { buildWeek, dayFlags, flagsKey } from "./dayView";
+import { buildWeek, dayFlags, placementKey } from "./dayView";
+import { forcedPicks } from "./entries";
 import { keys, mergeEntries } from "./entries";
 import { supabase } from "./supabase";
 import type { DietPlan, Entries, EntryValue, PersonId } from "./types";
@@ -211,12 +212,11 @@ export function useHousehold() {
   );
 
   // Il piazzamento dei menù dipende solo dai piani e da ON/OFF e orari dell'allenamento
-  const flags = dayFlags(entries);
-  const flagsK = flagsKey(flags);
+  const placementK = placementKey(entries);
   const placement = useMemo(
-    () => planPlacement(plans.antonio, plans.gilda, flags),
+    () => planPlacement(plans.antonio, plans.gilda, dayFlags(entries), forcedPicks(entries)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [plans, flagsK],
+    [plans, placementK],
   );
   const week = useMemo(() => buildWeek(plans, entries, placement), [plans, entries, placement]);
 

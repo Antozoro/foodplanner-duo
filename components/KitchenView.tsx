@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Moon, Sun, TriangleAlert } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Moon, Shuffle, Sun, TriangleAlert } from "lucide-react";
 import { DAY_LABELS, DAY_SHORT, MEALS, PEOPLE } from "@/lib/config";
-import type { ChosenItem, DayView, MealView } from "@/lib/dayView";
+import type { ChosenItem, Choice, DayView, MealView } from "@/lib/dayView";
 import { keys } from "@/lib/entries";
 import type { MealId, Mode, PersonId } from "@/lib/types";
 import type { ReactNode } from "react";
@@ -40,19 +40,62 @@ function gramsText(g: number) {
   return g.toLocaleString("it-IT", { maximumFractionDigits: 1 });
 }
 
+/** Scelta del pasto (o del menù): "Consigliato" lo decide l'app, gli altri sono scelte tue. */
+function ChangeChip({
+  label,
+  forced,
+  value,
+  choices,
+  onChange,
+}: {
+  label: string;
+  forced: boolean;
+  value: number;
+  choices: Choice[];
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <label
+      className={`relative mt-1.5 inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-semibold ${
+        forced ? "bg-ink text-white" : "bg-canvas text-ink"
+      }`}
+    >
+      <Shuffle size={14} aria-hidden />
+      {label}
+      <ChevronDown size={12} aria-hidden />
+      <select
+        aria-label={label}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        value={forced ? value : "auto"}
+        onChange={(e) => onChange(e.target.value === "auto" ? null : Number(e.target.value))}
+      >
+        <option value="auto">Consigliato dall&apos;app</option>
+        {choices.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function PersonCard({
   view,
   meal,
   onPick,
+  onSource,
+  onGildaMenu,
 }: {
   view: DayView;
   meal: MealId;
   onPick: (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => void;
+  onSource: (view: DayView, mealView: MealView, value: number | null) => void;
+  onGildaMenu: (view: DayView, value: number | null) => void;
 }) {
   const tone = TONE[view.person];
   const name = PEOPLE.find((p) => p.id === view.person)!.name;
   const mealView = view.meals.find((m) => m.meal === meal)!;
-  const otherMenu = view.menuDay !== view.day;
 
   return (
     <section
@@ -67,11 +110,6 @@ function PersonCard({
               {view.mode === "ON" ? "Giorno ON" : "Giorno OFF"}
             </span>
           )}
-          {otherMenu && (
-            <span className="rounded-full bg-canvas px-2 py-0.5 text-[0.7rem] font-medium text-muted">
-              menù del {DAY_SHORT[view.menuDay]}
-            </span>
-          )}
           {mealView.swapped && (
             <span className="inline-flex items-center gap-1 rounded-full bg-canvas px-2 py-0.5 text-[0.7rem] font-medium text-muted">
               <ArrowLeftRight size={11} aria-hidden />
@@ -79,6 +117,24 @@ function PersonCard({
             </span>
           )}
         </div>
+        {view.person === "antonio" && mealView.sourceChoices && (
+          <ChangeChip
+            label="Cambia pasto"
+            forced={mealView.forcedSource === true}
+            value={mealView.menuIdx}
+            choices={mealView.sourceChoices}
+            onChange={(v) => onSource(view, mealView, v)}
+          />
+        )}
+        {view.person === "gilda" && view.menuChoices && (
+          <ChangeChip
+            label="Cambia menù"
+            forced={view.forcedMenu === true}
+            value={view.menuDay}
+            choices={view.menuChoices}
+            onChange={(v) => onGildaMenu(view, v)}
+          />
+        )}
       </header>
 
       {mealView.items.length === 0 && <p className="border-t border-line py-4 text-sm text-muted">Nessun alimento in questo pasto.</p>}
@@ -147,7 +203,7 @@ export function KitchenView({
   /** Cambia un ingrediente: l'altra persona passa in automatico allo stesso ingrediente, se il suo pasto lo prevede. */
   const onPick = (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => {
     const updates: [string, number][] = [
-      [keys.alt(view.person, view.day, view.menuDay, mealView.source, item.slotIdx), optionIdx],
+      [keys.alt(view.person, view.day, mealView.menuIdx, mealView.source, item.slotIdx), optionIdx],
     ];
     if (item.link !== null) {
       const other = view.person === "antonio" ? gilda : antonio;
@@ -156,11 +212,18 @@ export function KitchenView({
       const x = alignKey(item.options[optionIdx].name);
       const j = otherItem?.options.findIndex((o) => alignKey(o.name) === x) ?? -1;
       if (otherItem && j >= 0) {
-        updates.push([keys.alt(other.person, other.day, other.menuDay, otherMeal.source, otherItem.slotIdx), j]);
+        updates.push([keys.alt(other.person, other.day, otherMeal.menuIdx, otherMeal.source, otherItem.slotIdx), j]);
       }
     }
     hs.setEntries(updates);
   };
+
+  const onSource = (view: DayView, mealView: MealView, value: number | null) => {
+    if (mealView.meal === "pranzo" || mealView.meal === "cena") {
+      hs.setEntry(keys.src(view.day, mealView.meal), value);
+    }
+  };
+  const onGildaMenu = (view: DayView, value: number | null) => hs.setEntry(keys.gmenu(view.day), value);
 
   const setMorning = (person: PersonId, v: string) => hs.setEntry(keys.morning(person, day), v === "mattina");
 
@@ -251,7 +314,7 @@ export function KitchenView({
         <div className="rounded-2xl border border-warn/40 bg-surface p-3" role="status">
           <p className="flex items-center gap-1.5 text-sm font-bold text-warn">
             <TriangleAlert size={16} aria-hidden />
-            Ingredienti che non coincidono
+            Da controllare
           </p>
           <ul className="mt-1.5 space-y-1 text-[0.82rem] leading-snug">
             {pair.notes
@@ -264,8 +327,8 @@ export function KitchenView({
       )}
 
       <div className="grid grid-cols-2 items-start gap-2">
-        <PersonCard view={antonio} meal={meal} onPick={onPick} />
-        <PersonCard view={gilda} meal={meal} onPick={onPick} />
+        <PersonCard view={antonio} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} />
+        <PersonCard view={gilda} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} />
       </div>
     </div>
   );

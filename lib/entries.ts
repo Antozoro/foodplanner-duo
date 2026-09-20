@@ -1,5 +1,6 @@
 import { ANTONIO_ON_DAYS } from "./config";
 import type { Entries, EntryValue, MealId, Mode, PersonId } from "./types";
+import type { Forced } from "@/utils/menuMatcher";
 
 /* Chiavi dello stato condiviso */
 export const keys = {
@@ -8,6 +9,10 @@ export const keys = {
   alt: (person: PersonId, day: number, menuDay: number, meal: MealId, slotIdx: number) =>
     `alt:${person}:${day}:${menuDay}:${meal}:${slotIdx}`,
   altPrefix: (person: PersonId) => `alt:${person}:`,
+  /** Pasto di Antonio scelto a mano per pranzo o cena (indice del menù del PDF). */
+  src: (day: number, meal: "pranzo" | "cena") => `src:antonio:${day}:${meal}`,
+  /** Menù di Gilda scelto a mano per un giorno (indice del menù del PDF). */
+  gmenu: (day: number) => `gmenu:${day}`,
   check: (itemKey: string) => `check:${itemKey}`,
 };
 
@@ -48,4 +53,16 @@ export function getAlt(
 ): number {
   const v = getValue(entries, keys.alt(person, day, menuDay, meal, slotIdx));
   return typeof v === "number" && v >= 0 ? v : 0;
+}
+
+const numberOrUndefined = (v: EntryValue | undefined) => (typeof v === "number" && v >= 0 ? v : undefined);
+
+/** Scelte fatte a mano su quale menù/pasto usare in ogni giorno. */
+export function forcedPicks(entries: Entries): Forced {
+  const days = Array.from({ length: 7 }, (_, d) => d);
+  return {
+    gilda: days.map((d) => numberOrUndefined(getValue(entries, keys.gmenu(d)))),
+    antonioL: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "pranzo")))),
+    antonioD: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "cena")))),
+  };
 }
