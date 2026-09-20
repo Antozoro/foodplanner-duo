@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #edf0ef;
+  --color-surface: #ffffff;
+  --color-ink: #14201d;
+  --color-muted: #5a6864;
+  --color-line: #d2dad7;
+  --color-antonio: #2648c9;
+  --color-antonio-soft: #e3e9fb;
+  --color-gilda: #b8236b;
+  --color-gilda-soft: #f8e2ee;
+  --color-ok: #1b7f53;
+  --color-warn: #a35a00;
+  --color-bad: #b3261e;
+  --font-sans: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* Le grammature sono il centro dell'app: strette, pesanti, numeri tabulari */
+.grams {
+  font-weight: 760;
+  font-stretch: 78%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
