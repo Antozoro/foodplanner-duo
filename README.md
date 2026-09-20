@@ -37,3 +37,4 @@ Le tabelle sono in `supabase/schema.sql` (`plans` e `household_state`).
 npm install
 npm run dev
 ```
+
