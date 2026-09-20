@@ -35,7 +35,7 @@ export function Segmented<T extends string>({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={`min-h-10 min-w-0 flex-1 rounded-[10px] px-0.5 text-[0.72rem] font-semibold tracking-tight whitespace-nowrap transition-colors ${
+            className={`min-h-10 flex-auto rounded-[10px] px-1 text-[0.78rem] font-semibold whitespace-nowrap transition-colors ${
               active ? ACTIVE[tone] : "text-ink"
             }`}
           >

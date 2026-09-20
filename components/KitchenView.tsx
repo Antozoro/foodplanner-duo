@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowLeftRight, ChevronDown } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Moon, Sun } from "lucide-react";
 import { DAY_LABELS, DAY_SHORT, MEALS, PEOPLE } from "@/lib/config";
 import { buildDayView, type DayView } from "@/lib/dayView";
 import { keys } from "@/lib/entries";
 import type { MealId, Mode, PersonId } from "@/lib/types";
+import type { ReactNode } from "react";
 import type { Household } from "@/lib/useHousehold";
 import { formatGrams } from "@/utils/ingredients";
 import { Segmented } from "./ui";
@@ -14,10 +15,26 @@ const TONE = {
   gilda: { text: "text-gilda", soft: "bg-gilda-soft", top: "border-t-gilda", ring: "ring-gilda" },
 } as const;
 
+const withIcon = (icon: ReactNode, text: string) => (
+  <span className="inline-flex items-center justify-center gap-1">
+    {icon}
+    {text}
+  </span>
+);
+
 const TIMING = [
-  { value: "sera", label: "🌙 Sera" },
-  { value: "mattina", label: "☀️ Mattina" },
+  { value: "sera", label: withIcon(<Moon size={14} aria-hidden />, "Sera") },
+  { value: "mattina", label: withIcon(<Sun size={14} aria-hidden />, "Mattina") },
 ];
+
+const DAY_MODE: { value: Mode; label: ReactNode }[] = [
+  { value: "ON", label: withIcon(<Dumbbell size={14} aria-hidden />, "ON") },
+  { value: "OFF", label: withIcon(<Coffee size={14} aria-hidden />, "OFF") },
+];
+
+function FieldLabel({ children }: { children: ReactNode }) {
+  return <p className="px-1 pt-1 pb-0.5 text-[0.7rem] leading-none font-medium text-muted">{children}</p>;
+}
 
 function gramsText(g: number) {
   return g.toLocaleString("it-IT", { maximumFractionDigits: 1 });
@@ -179,18 +196,9 @@ export function KitchenView({
       </div>
 
       <div className="grid grid-cols-2 gap-2 rounded-[22px] border border-line bg-canvas p-2">
-        <div className="min-w-0 space-y-1.5">
+        <div className="min-w-0">
           <p className="px-1 text-sm font-bold text-antonio">Antonio</p>
-          <Segmented<Mode>
-            label="Antonio: giorno di allenamento o riposo"
-            tone="antonio"
-            value={antonio.mode ?? "OFF"}
-            options={[
-              { value: "ON", label: "💪 ON" },
-              { value: "OFF", label: "☕ OFF" },
-            ]}
-            onChange={(v) => hs.setEntry(keys.mode(day), v)}
-          />
+          <FieldLabel>Allenamento</FieldLabel>
           <Segmented
             label="Antonio: orario dell'allenamento"
             tone="antonio"
@@ -198,9 +206,18 @@ export function KitchenView({
             options={TIMING}
             onChange={(v) => setMorning("antonio", v)}
           />
+          <FieldLabel>Tipo di giorno</FieldLabel>
+          <Segmented<Mode>
+            label="Antonio: giorno di allenamento o di riposo"
+            tone="antonio"
+            value={antonio.mode ?? "OFF"}
+            options={DAY_MODE}
+            onChange={(v) => hs.setEntry(keys.mode(day), v)}
+          />
         </div>
-        <div className="min-w-0 space-y-1.5">
+        <div className="min-w-0">
           <p className="px-1 text-sm font-bold text-gilda">Gilda</p>
+          <FieldLabel>Allenamento</FieldLabel>
           <Segmented
             label="Gilda: orario dell'allenamento"
             tone="gilda"
