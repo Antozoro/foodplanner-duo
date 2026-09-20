@@ -45,7 +45,17 @@ const RULES: [RegExp, string][] = [
 
 const NOISE = /^(crudo|cruda|cotto|cotta|cotti|cotte|bollito|bollita|bolliti|bollite|scolato|scolata|scolati|scolate|sgocciolato|sgocciolata|fresco|fresca|freschi|fresche)$/i;
 
+const cache = new Map<string, string>();
+
 export function normalizeIngredient(raw: string): string {
+  const hit = cache.get(raw);
+  if (hit !== undefined) return hit;
+  const out = normalizeUncached(raw);
+  cache.set(raw, out);
+  return out;
+}
+
+function normalizeUncached(raw: string): string {
   const name = raw.trim();
   for (const [re, canonical] of RULES) {
     if (re.test(name)) return canonical;
@@ -58,6 +68,12 @@ export function normalizeIngredient(raw: string): string {
     .join(" ");
   const out = cleaned || name;
   return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+/** Nome usato per far coincidere gli ingredienti tra Antonio e Gilda: tutti i tipi di riso contano come "Riso". */
+export function alignKey(raw: string): string {
+  const n = normalizeIngredient(raw);
+  return n.startsWith("Riso ") ? "Riso" : n;
 }
 
 /** Grammi in formato leggibile: "850 g" oppure "1,25 kg". */

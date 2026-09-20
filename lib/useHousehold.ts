@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SEED_PLANS } from "@/data/dietPlans";
 import { HOUSEHOLD_ID } from "./config";
+import { buildWeek, dayFlags, flagsKey } from "./dayView";
 import { keys, mergeEntries } from "./entries";
 import { supabase } from "./supabase";
 import type { DietPlan, Entries, EntryValue, PersonId } from "./types";
+import { planPlacement } from "@/utils/menuMatcher";
 
 const LS_ENTRIES = "fpd:entries:v1";
 const LS_PLANS = "fpd:plans:v1";
@@ -152,15 +154,23 @@ export function useHousehold() {
     };
   }, [pull, applyEntries, applyPlan]);
 
-  const setEntry = useCallback(
-    (key: string, value: EntryValue) => {
-      const next: Entries = { ...entriesRef.current, [key]: { v: value, t: Date.now() } };
+  /** Modifica più valori in una volta sola (una sola scrittura e una sola sincronizzazione). */
+  const setEntriesBatch = useCallback(
+    (updates: [string, EntryValue][]) => {
+      const t = Date.now();
+      const next: Entries = { ...entriesRef.current };
+      for (const [key, value] of updates) next[key] = { v: value, t };
       entriesRef.current = next;
       setEntries(next);
       writeLocal(LS_ENTRIES, next);
       scheduleSync();
     },
     [scheduleSync],
+  );
+
+  const setEntry = useCallback(
+    (key: string, value: EntryValue) => setEntriesBatch([[key, value]]),
+    [setEntriesBatch],
   );
 
   /** Sostituisce il piano di UNA persona (l'altro non viene toccato) e azzera le sue alternative scelte. */
@@ -200,7 +210,17 @@ export function useHousehold() {
     [storedPlans],
   );
 
-  return { ready, entries, plans, storedPlans, status, setEntry, savePlan, hasCloud: supabase !== null };
+  // Il piazzamento dei menù dipende solo dai piani e da ON/OFF e orari dell'allenamento
+  const flags = dayFlags(entries);
+  const flagsK = flagsKey(flags);
+  const placement = useMemo(
+    () => planPlacement(plans.antonio, plans.gilda, flags),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [plans, flagsK],
+  );
+  const week = useMemo(() => buildWeek(plans, entries, placement), [plans, entries, placement]);
+
+  return { ready, entries, plans, storedPlans, week, status, setEntry, setEntries: setEntriesBatch, savePlan, hasCloud: supabase !== null };
 }
 
 export type Household = ReturnType<typeof useHousehold>;

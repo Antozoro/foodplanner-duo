@@ -9,7 +9,7 @@ import { formatGrams } from "@/utils/ingredients";
 import { buildShopping } from "@/utils/shopping";
 
 export function ShoppingView({ hs }: { hs: Household }) {
-  const items = useMemo(() => buildShopping(hs.plans, hs.entries), [hs.plans, hs.entries]);
+  const items = useMemo(() => buildShopping(hs.week), [hs.week]);
 
   const isChecked = (key: string) => hs.entries[keys.check(key)]?.v === true;
   const checkedCount = items.filter((i) => isChecked(i.key)).length;

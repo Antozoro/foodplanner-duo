@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Moon, Sun } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Moon, Sun, TriangleAlert } from "lucide-react";
 import { DAY_LABELS, DAY_SHORT, MEALS, PEOPLE } from "@/lib/config";
-import { buildDayView, type DayView } from "@/lib/dayView";
+import type { ChosenItem, DayView, MealView } from "@/lib/dayView";
 import { keys } from "@/lib/entries";
 import type { MealId, Mode, PersonId } from "@/lib/types";
 import type { ReactNode } from "react";
 import type { Household } from "@/lib/useHousehold";
-import { formatGrams } from "@/utils/ingredients";
+import { alignKey, formatGrams } from "@/utils/ingredients";
 import { Segmented } from "./ui";
 
 const TONE = {
@@ -43,16 +43,16 @@ function gramsText(g: number) {
 function PersonCard({
   view,
   meal,
-  hs,
+  onPick,
 }: {
   view: DayView;
   meal: MealId;
-  hs: Household;
+  onPick: (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => void;
 }) {
   const tone = TONE[view.person];
   const name = PEOPLE.find((p) => p.id === view.person)!.name;
   const mealView = view.meals.find((m) => m.meal === meal)!;
-  const otherMenu = view.person === "antonio" && view.menuDay !== view.day;
+  const otherMenu = view.menuDay !== view.day;
 
   return (
     <section
@@ -106,12 +106,7 @@ function PersonCard({
                       aria-label={`Alternativa per ${item.options[0].name}`}
                       className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                       value={item.optionIdx}
-                      onChange={(e) =>
-                        hs.setEntry(
-                          keys.alt(view.person, view.day, view.menuDay, mealView.source, item.slotIdx),
-                          Number(e.target.value),
-                        )
-                      }
+                      onChange={(e) => onPick(view, mealView, item, Number(e.target.value))}
                     >
                       {item.options.map((o, i) => (
                         <option key={o.id} value={i}>
@@ -146,8 +141,26 @@ export function KitchenView({
   onMeal: (m: MealId) => void;
   today: number;
 }) {
-  const antonio = buildDayView("antonio", day, hs.plans, hs.entries);
-  const gilda = buildDayView("gilda", day, hs.plans, hs.entries);
+  const pair = hs.week.days[day];
+  const { antonio, gilda } = pair;
+
+  /** Cambia un ingrediente: l'altra persona passa in automatico allo stesso ingrediente, se il suo pasto lo prevede. */
+  const onPick = (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => {
+    const updates: [string, number][] = [
+      [keys.alt(view.person, view.day, view.menuDay, mealView.source, item.slotIdx), optionIdx],
+    ];
+    if (item.link !== null) {
+      const other = view.person === "antonio" ? gilda : antonio;
+      const otherMeal = other.meals.find((m) => m.meal === mealView.meal)!;
+      const otherItem = otherMeal.items[item.link];
+      const x = alignKey(item.options[optionIdx].name);
+      const j = otherItem?.options.findIndex((o) => alignKey(o.name) === x) ?? -1;
+      if (otherItem && j >= 0) {
+        updates.push([keys.alt(other.person, other.day, other.menuDay, otherMeal.source, otherItem.slotIdx), j]);
+      }
+    }
+    hs.setEntries(updates);
+  };
 
   const setMorning = (person: PersonId, v: string) => hs.setEntry(keys.morning(person, day), v === "mattina");
 
@@ -191,6 +204,12 @@ export function KitchenView({
             }`}
           >
             {m.label}
+            {pair.notes.some((n) => n.meal === m.id) && (
+              <>
+                <span className="ml-1.5 inline-block size-1.5 rounded-full bg-warn align-middle" aria-hidden />
+                <span className="sr-only"> (ingredienti che non coincidono)</span>
+              </>
+            )}
           </button>
         ))}
       </div>
@@ -228,9 +247,25 @@ export function KitchenView({
         </div>
       </div>
 
+      {pair.notes.some((n) => n.meal === meal) && (
+        <div className="rounded-2xl border border-warn/40 bg-surface p-3" role="status">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-warn">
+            <TriangleAlert size={16} aria-hidden />
+            Ingredienti che non coincidono
+          </p>
+          <ul className="mt-1.5 space-y-1 text-[0.82rem] leading-snug">
+            {pair.notes
+              .filter((n) => n.meal === meal)
+              .map((n) => (
+                <li key={n.text}>{n.text}</li>
+              ))}
+          </ul>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 items-start gap-2">
-        <PersonCard view={antonio} meal={meal} hs={hs} />
-        <PersonCard view={gilda} meal={meal} hs={hs} />
+        <PersonCard view={antonio} meal={meal} onPick={onPick} />
+        <PersonCard view={gilda} meal={meal} onPick={onPick} />
       </div>
     </div>
   );
