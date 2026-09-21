@@ -67,13 +67,15 @@ function ChangeChip({
       <ChevronDown size={12} aria-hidden />
       <select
         aria-label={label}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        className="absolute inset-0 h-full w-full cursor-pointer bg-surface text-ink opacity-0"
         value={forced ? value : "auto"}
         onChange={(e) => onChange(e.target.value === "auto" ? null : Number(e.target.value))}
       >
-        <option value="auto">Consigliato dall&apos;app</option>
+        <option value="auto" className="bg-surface text-ink">
+          Consigliato dall&apos;app
+        </option>
         {choices.map((c) => (
-          <option key={c.value} value={c.value}>
+          <option key={c.value} value={c.value} className="bg-surface text-ink">
             {c.label}
           </option>
         ))}
@@ -166,12 +168,12 @@ function PersonCard({
                     <ChevronDown size={12} aria-hidden />
                     <select
                       aria-label={`Alternativa per ${item.options[0].name}`}
-                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      className="absolute inset-0 h-full w-full cursor-pointer bg-surface text-ink opacity-0"
                       value={item.optionIdx}
                       onChange={(e) => onPick(view, mealView, item, Number(e.target.value))}
                     >
                       {item.options.map((o, i) => (
-                        <option key={o.id} value={i}>
+                        <option key={o.id} value={i} className="bg-surface text-ink">
                           {o.name}: {formatGrams(o.grams)}
                           {i === 0 ? " (piano)" : ""}
                         </option>
@@ -194,13 +196,15 @@ function PersonCard({
               <ChevronDown size={16} className="absolute right-3" aria-hidden />
               <select
                 aria-label={`Verdura per ${view.person === "antonio" ? "Antonio" : "Gilda"}`}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                className="absolute inset-0 h-full w-full cursor-pointer bg-surface text-ink opacity-0"
                 value={vegetable}
                 onChange={(e) => onVegetable(view, meal, e.target.value)}
               >
-                <option value="">Nessuna</option>
+                <option value="" className="bg-surface text-ink">
+                  Nessuna
+                </option>
                 {VEGETABLES.map((v) => (
-                  <option key={v} value={v}>
+                  <option key={v} value={v} className="bg-surface text-ink">
                     {v}
                   </option>
                 ))}
