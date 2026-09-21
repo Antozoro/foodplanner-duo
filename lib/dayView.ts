@@ -1,6 +1,6 @@
 import { MEAL_ORDER } from "./config";
-import { forcedPicks, getMode, getMorning, getValue, keys } from "./entries";
-import type { DayMeals, DietPlan, Entries, FoodOption, MealId, Mode, PersonId, Slot } from "./types";
+import { forcedPicks, getMode, getMorning, getValue, keys, readSnapshot } from "./entries";
+import type { DayMeals, DaySnapshot, DietPlan, Entries, EntryValue, FoodOption, MealId, Mode, PersonId, SnapMeal, Slot } from "./types";
 import { alignKey } from "@/utils/ingredients";
 import { alignMeal, describeMeal, keysOf, OLIO, resolveRepeats, type Cell } from "@/utils/mealAlign";
 import { resolveMeals } from "@/utils/mealResolver";
@@ -65,6 +65,8 @@ export interface DayPair {
   gilda: DayView;
   /** Cose da controllare: ingredienti che non coincidono o ripetuti. */
   notes: Note[];
+  /** true se il giorno è stato salvato (bloccato). */
+  locked: boolean;
 }
 
 export interface Week {
@@ -75,11 +77,15 @@ const EMPTY_DAY: DayMeals = { colazione: [], spuntino: [], pranzo: [], merenda: 
 
 /** ON/OFF e orario dell'allenamento di ogni giorno. */
 export function dayFlags(entries: Entries): DayFlags[] {
-  return Array.from({ length: 7 }, (_, d) => ({
-    mode: getMode(entries, d),
-    antonioMorning: getMorning(entries, "antonio", d),
-    gildaMorning: getMorning(entries, "gilda", d),
-  }));
+  return Array.from({ length: 7 }, (_, d) => {
+    const snap = readSnapshot(entries, d);
+    if (snap) return { mode: snap.mode, antonioMorning: snap.antonioMorning, gildaMorning: snap.gildaMorning };
+    return {
+      mode: getMode(entries, d),
+      antonioMorning: getMorning(entries, "antonio", d),
+      gildaMorning: getMorning(entries, "gilda", d),
+    };
+  });
 }
 
 /** Chiave che cambia solo quando cambia qualcosa che sposta i menù (e non per le altre scelte). */
@@ -88,7 +94,8 @@ export function placementKey(entries: Entries): string {
     .map((f) => `${f.mode[1]}${f.antonioMorning ? "m" : "s"}${f.gildaMorning ? "m" : "s"}`)
     .join(".");
   const forced = forcedPicks(entries);
-  return `${flags}|${forced.gilda.join(",")}|${forced.antonioL.join(",")}|${forced.antonioD.join(",")}`;
+  const locks = Array.from({ length: 7 }, (_, d) => readSnapshot(entries, d)?.savedAt ?? 0).join(",");
+  return `${flags}|${forced.gilda.join(",")}|${forced.antonioL.join(",")}|${forced.antonioD.join(",")}|${locks}`;
 }
 
 function uniqueLabels(labels: string[]): string[] {
@@ -130,6 +137,9 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
   const nA = plans.antonio.days.length;
 
   const days: DayPair[] = flags.map((f, day) => {
+    const snap = readSnapshot(entries, day);
+    if (snap) return pairFromSnapshot(day, snap);
+
     const gMenu = place.gilda[day];
     const aSpecs: MealSpec[] = MEAL_ORDER.map((meal) => {
       let source: MealId = meal;
@@ -240,7 +250,7 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
       forcedMenu: forced.gilda[day] !== undefined && forced.gilda[day]! < plans.gilda.days.length,
     };
 
-    return { day, antonio, gilda, notes: buildNotes(plans, antonio, gilda, repeats) };
+    return { day, antonio, gilda, notes: buildNotes(plans, antonio, gilda, repeats), locked: false };
   });
 
   return { days };
@@ -280,4 +290,85 @@ function buildNotes(
     });
   }
   return notes;
+}
+
+function viewFromSnapshot(person: PersonId, day: number, snap: DaySnapshot): DayView {
+  const src = person === "antonio" ? snap.antonio : snap.gilda;
+  return {
+    person,
+    day,
+    menuDay: person === "antonio" ? snap.aBase : snap.gMenu,
+    mode: person === "antonio" ? snap.mode : null,
+    morning: person === "antonio" ? snap.antonioMorning : snap.gildaMorning,
+    meals: src.map((sm) => ({
+      meal: sm.meal,
+      source: sm.source,
+      swapped: sm.swapped,
+      menuIdx: sm.menuIdx,
+      items: sm.items.map((it, slotIdx) => {
+        const option: FoodOption = { id: `${person}-${day}-${sm.meal}-${slotIdx}`, name: it.name, grams: it.grams };
+        return { slotIdx, optionIdx: 0, option, options: [option], explicit: true, link: null };
+      }),
+    })),
+  };
+}
+
+/** Un giorno salvato viene mostrato esattamente com'era, senza ricalcolarlo. */
+function pairFromSnapshot(day: number, snap: DaySnapshot): DayPair {
+  return {
+    day,
+    antonio: viewFromSnapshot("antonio", day, snap),
+    gilda: viewFromSnapshot("gilda", day, snap),
+    notes: snap.notes,
+    locked: true,
+  };
+}
+
+const snapMeals = (view: DayView): SnapMeal[] =>
+  view.meals.map((m) => ({
+    meal: m.meal,
+    source: m.source,
+    swapped: m.swapped,
+    menuIdx: m.menuIdx,
+    items: m.items.map((i) => ({ name: i.option.name, grams: i.option.grams })),
+  }));
+
+/** Fotografia del giorno così com'è adesso, da salvare. */
+export function makeSnapshot(pair: DayPair): DaySnapshot {
+  const menuOf = (meal: MealId) => pair.antonio.meals.find((m) => m.meal === meal)!.menuIdx;
+  return {
+    v: 1,
+    savedAt: Date.now(),
+    mode: pair.antonio.mode ?? "ON",
+    antonioMorning: pair.antonio.morning,
+    gildaMorning: pair.gilda.morning,
+    gMenu: pair.gilda.menuDay,
+    aL: menuOf("pranzo"),
+    aD: menuOf("cena"),
+    aBase: pair.antonio.menuDay,
+    antonio: snapMeals(pair.antonio),
+    gilda: snapMeals(pair.gilda),
+    notes: pair.notes,
+  };
+}
+
+/**
+ * Cosa scrivere per salvare (bloccare) un giorno: la fotografia del giorno, più le scelte fissate,
+ * così se poi lo sblocchi resta com'era.
+ */
+export function lockUpdates(pair: DayPair): [string, EntryValue][] {
+  const day = pair.day;
+  const out: [string, EntryValue][] = [
+    [keys.lock(day), JSON.stringify(makeSnapshot(pair))],
+    [keys.gmenu(day), pair.gilda.menuDay],
+  ];
+  for (const meal of ["pranzo", "cena"] as const) {
+    out.push([keys.src(day, meal), pair.antonio.meals.find((m) => m.meal === meal)!.menuIdx]);
+  }
+  for (const view of [pair.antonio, pair.gilda]) {
+    for (const mv of view.meals) {
+      for (const item of mv.items) out.push([keys.alt(view.person, day, mv.menuIdx, mv.source, item.slotIdx), item.optionIdx]);
+    }
+  }
+  return out;
 }

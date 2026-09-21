@@ -11,11 +11,13 @@ export function NoteBox({
   tone,
   value,
   onCommit,
+  readOnly = false,
 }: {
   label: string;
   tone: "antonio" | "gilda";
   value: string;
   onCommit: (text: string) => void;
+  readOnly?: boolean;
 }) {
   const [text, setText] = useState(value);
   const focused = useRef(false);
@@ -50,6 +52,7 @@ export function NoteBox({
       <textarea
         value={text}
         rows={3}
+        readOnly={readOnly}
         placeholder="Scrivi cosa cucinate, per esempio: riso, zucchine e tonno"
         onFocus={() => {
           focused.current = true;
@@ -64,7 +67,7 @@ export function NoteBox({
           const t = e.target.value;
           timer.current = setTimeout(() => commit(t), 600);
         }}
-        className="mt-1.5 block w-full resize-none rounded-xl border border-line bg-canvas px-3 py-2 text-base leading-snug placeholder:text-muted/70"
+        className={`mt-1.5 block w-full resize-none rounded-xl border border-line bg-canvas px-3 py-2 text-base leading-snug placeholder:text-muted/70 ${readOnly ? "text-muted" : ""}`}
       />
     </label>
   );

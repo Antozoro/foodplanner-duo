@@ -17,15 +17,17 @@ export function Segmented<T extends string>({
   options,
   onChange,
   tone = "neutral",
+  disabled = false,
 }: {
   label: string;
   value: T;
   options: { value: T; label: ReactNode }[];
   onChange: (value: T) => void;
   tone?: Tone;
+  disabled?: boolean;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex rounded-xl border border-line bg-surface p-0.5">
+    <div role="radiogroup" aria-label={label} className={`flex rounded-xl border border-line bg-surface p-0.5 ${disabled ? "opacity-60" : ""}`}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -34,6 +36,7 @@ export function Segmented<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
+            disabled={disabled}
             onClick={() => onChange(o.value)}
             className={`min-h-10 flex-auto rounded-[10px] px-1 text-[0.78rem] font-semibold whitespace-nowrap transition-colors ${
               active ? ACTIVE[tone] : "text-ink"

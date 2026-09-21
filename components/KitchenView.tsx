@@ -1,8 +1,10 @@
 "use client";
 
-import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Moon, Shuffle, Sun, TriangleAlert } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Lock, Moon, Pencil, Shuffle, Sun, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import { DAY_LABELS, DAY_SHORT, MEALS, PEOPLE } from "@/lib/config";
-import type { ChosenItem, Choice, DayView, MealView } from "@/lib/dayView";
+import { lockUpdates, type ChosenItem, type Choice, type DayView, type MealView } from "@/lib/dayView";
+import { hashPin } from "@/lib/pin";
 import { getText, keys } from "@/lib/entries";
 import { VEGETABLES } from "@/data/vegetables";
 import type { MealId, Mode, PersonId } from "@/lib/types";
@@ -10,6 +12,7 @@ import type { ReactNode } from "react";
 import type { Household } from "@/lib/useHousehold";
 import { alignKey, formatGrams } from "@/utils/ingredients";
 import { NoteBox } from "./NoteBox";
+import { PinDialog } from "./PinDialog";
 import { Segmented } from "./ui";
 
 const TONE = {
@@ -92,7 +95,9 @@ function PersonCard({
   onGildaMenu,
   vegetable,
   onVegetable,
+  locked,
 }: {
+  locked: boolean;
   view: DayView;
   meal: MealId;
   vegetable: string;
@@ -125,7 +130,7 @@ function PersonCard({
             </span>
           )}
         </div>
-        {view.person === "antonio" && mealView.sourceChoices && (
+        {!locked && view.person === "antonio" && mealView.sourceChoices && (
           <ChangeChip
             label="Cambia pasto"
             forced={mealView.forcedSource === true}
@@ -134,7 +139,7 @@ function PersonCard({
             onChange={(v) => onSource(view, mealView, v)}
           />
         )}
-        {view.person === "gilda" && view.menuChoices && (
+        {!locked && view.person === "gilda" && view.menuChoices && (
           <ChangeChip
             label="Cambia menù"
             forced={view.forcedMenu === true}
@@ -161,7 +166,7 @@ function PersonCard({
                   {gramsText(item.option.grams)}
                   <span className="ml-0.5 text-base font-medium text-muted">g</span>
                 </span>
-                {item.options.length > 1 && (
+                {!locked && item.options.length > 1 && (
                   <label
                     className={`relative inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-0.5 rounded-full px-2 ${
                       changed ? `${tone.soft} ${tone.text} ring-2 ${tone.ring}` : "bg-canvas text-ink"
@@ -194,13 +199,14 @@ function PersonCard({
         <div className="border-t border-line py-3">
           <label className="block">
             <span className="text-xs font-medium text-muted">Verdura</span>
-            <span className="relative mt-1 flex min-h-11 items-center rounded-xl bg-canvas px-3 text-[0.92rem] font-medium">
+            <span className={`relative mt-1 flex min-h-11 items-center rounded-xl bg-canvas px-3 text-[0.92rem] font-medium ${locked ? "opacity-60" : ""}`}>
               <span className="truncate pr-6">{vegetable || "Nessuna"}</span>
               <ChevronDown size={16} className="absolute right-3" aria-hidden />
               <select
                 aria-label={`Verdura per ${view.person === "antonio" ? "Antonio" : "Gilda"}`}
                 className="absolute inset-0 h-full w-full cursor-pointer bg-surface text-ink opacity-0"
                 value={vegetable}
+                disabled={locked}
                 onChange={(e) => onVegetable(view, meal, e.target.value)}
               >
                 <option value="" className="bg-surface text-ink">
@@ -237,6 +243,9 @@ export function KitchenView({
 }) {
   const pair = hs.week.days[day];
   const { antonio, gilda } = pair;
+  const locked = pair.locked;
+  const [dialog, setDialog] = useState<null | "create" | "verify">(null);
+  const pinHash = getText(hs.entries, keys.pin);
 
   /** Cambia un ingrediente: l'altra persona passa in automatico allo stesso ingrediente, se il suo pasto lo prevede. */
   const onPick = (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => {
@@ -267,6 +276,23 @@ export function KitchenView({
     meal === "pranzo" || meal === "cena" ? getText(hs.entries, keys.veg(person, day, meal)) : "";
   const onGildaMenu = (view: DayView, value: number | null) => hs.setEntry(keys.gmenu(view.day), value);
 
+  /** Salva il giorno: se non c'è ancora un codice lo si sceglie adesso. */
+  const onSaveDay = () => {
+    if (pinHash) hs.setEntries(lockUpdates(pair));
+    else setDialog("create");
+  };
+  const createPinAndSave = async (pin: string) => {
+    hs.setEntries([[keys.pin, await hashPin(pin)], ...lockUpdates(pair)]);
+    setDialog(null);
+    return null;
+  };
+  const unlockDay = async (pin: string) => {
+    if ((await hashPin(pin)) !== pinHash) return "Codice sbagliato.";
+    hs.setEntry(keys.lock(day), null);
+    setDialog(null);
+    return null;
+  };
+
   const setMorning = (person: PersonId, v: string) => hs.setEntry(keys.morning(person, day), v === "mattina");
 
   return (
@@ -286,6 +312,9 @@ export function KitchenView({
             }`}
           >
             {d}
+            {hs.week.days[i].locked && (
+              <Lock size={10} className="absolute top-1.5 right-1.5" aria-label="giorno salvato" />
+            )}
             {today === i && (
               <span
                 className={`absolute bottom-1.5 left-1/2 size-1 -translate-x-1/2 rounded-full ${day === i ? "bg-white" : "bg-ink"}`}
@@ -319,12 +348,42 @@ export function KitchenView({
         ))}
       </div>
 
+      {locked ? (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-ink bg-surface p-2 pl-4">
+          <p className="flex items-center gap-2 text-sm font-bold">
+            <Lock size={16} aria-hidden />
+            Giorno salvato
+          </p>
+          <button
+            type="button"
+            onClick={() => setDialog("verify")}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-line px-4 text-sm font-semibold whitespace-nowrap"
+          >
+            <Pencil size={14} aria-hidden />
+            Modifica
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-2 pl-4">
+          <p className="text-sm text-muted">Finito? Salva il giorno.</p>
+          <button
+            type="button"
+            onClick={onSaveDay}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-sm font-semibold whitespace-nowrap text-white"
+          >
+            <Lock size={14} aria-hidden />
+            Salva giorno
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2 rounded-[22px] border border-line bg-canvas p-2">
         <div className="min-w-0">
           <p className="px-1 text-sm font-bold text-antonio">Antonio</p>
           <FieldLabel>Allenamento</FieldLabel>
           <Segmented
             label="Antonio: orario dell'allenamento"
+            disabled={locked}
             tone="antonio"
             value={antonio.morning ? "mattina" : "sera"}
             options={TIMING}
@@ -333,6 +392,7 @@ export function KitchenView({
           <FieldLabel>Tipo di giorno</FieldLabel>
           <Segmented<Mode>
             label="Antonio: giorno di allenamento o di riposo"
+            disabled={locked}
             tone="antonio"
             value={antonio.mode ?? "OFF"}
             options={DAY_MODE}
@@ -344,6 +404,7 @@ export function KitchenView({
           <FieldLabel>Allenamento</FieldLabel>
           <Segmented
             label="Gilda: orario dell'allenamento"
+            disabled={locked}
             tone="gilda"
             value={gilda.morning ? "mattina" : "sera"}
             options={TIMING}
@@ -369,8 +430,8 @@ export function KitchenView({
       )}
 
       <div className="grid grid-cols-2 items-start gap-2">
-        <PersonCard view={antonio} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("antonio")} onVegetable={onVegetable} />
-        <PersonCard view={gilda} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("gilda")} onVegetable={onVegetable} />
+        <PersonCard locked={locked} view={antonio} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("antonio")} onVegetable={onVegetable} />
+        <PersonCard locked={locked} view={gilda} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("gilda")} onVegetable={onVegetable} />
       </div>
 
       {(meal === "pranzo" || meal === "cena") && (
@@ -378,6 +439,7 @@ export function KitchenView({
           <h3 className="px-1 text-sm font-bold">Cosa cucinate a {meal}</h3>
           <NoteBox
             key={`antonio-${day}-${meal}`}
+            readOnly={locked}
             label={`${meal === "pranzo" ? "Pranzo" : "Cena"} di Antonio`}
             tone="antonio"
             value={getText(hs.entries, keys.note("antonio", day, meal))}
@@ -385,12 +447,17 @@ export function KitchenView({
           />
           <NoteBox
             key={`gilda-${day}-${meal}`}
+            readOnly={locked}
             label={`${meal === "pranzo" ? "Pranzo" : "Cena"} di Gilda`}
             tone="gilda"
             value={getText(hs.entries, keys.note("gilda", day, meal))}
             onCommit={(t) => hs.setEntry(keys.note("gilda", day, meal), t.trim() ? t : null)}
           />
         </section>
+      )}
+
+      {dialog && (
+        <PinDialog mode={dialog} onSubmit={dialog === "create" ? createPinAndSave : unlockDay} onClose={() => setDialog(null)} />
       )}
     </div>
   );

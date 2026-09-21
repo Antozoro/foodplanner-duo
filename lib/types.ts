@@ -35,3 +35,37 @@ export type EntryValue = string | number | boolean | null;
 
 /** Stato condiviso: ogni chiave ha valore + timestamp (vince l'ultima modifica). */
 export type Entries = Record<string, { v: EntryValue; t: number }>;
+
+/** Un alimento di un pasto salvato. */
+export interface SnapItem {
+  name: string;
+  grams: number;
+}
+
+export interface SnapMeal {
+  meal: MealId;
+  source: MealId;
+  swapped: boolean;
+  menuIdx: number;
+  items: SnapItem[];
+}
+
+/**
+ * Giorno salvato (bloccato): tutto ciò che si vede quel giorno, com'era al momento del salvataggio.
+ * Non cambia più finché non lo sblocchi, nemmeno se cambiano gli altri giorni o il piano.
+ */
+export interface DaySnapshot {
+  v: 1;
+  savedAt: number;
+  mode: Mode;
+  antonioMorning: boolean;
+  gildaMorning: boolean;
+  /** Menù di Gilda e pasti di Antonio (indici dei menù del PDF), per non spostare gli altri giorni. */
+  gMenu: number;
+  aL: number;
+  aD: number;
+  aBase: number;
+  antonio: SnapMeal[];
+  gilda: SnapMeal[];
+  notes: { meal: MealId; text: string }[];
+}

@@ -1,5 +1,5 @@
 import { ANTONIO_ON_DAYS } from "./config";
-import type { Entries, EntryValue, MealId, Mode, PersonId } from "./types";
+import type { DaySnapshot, Entries, EntryValue, MealId, Mode, PersonId } from "./types";
 import type { Forced } from "@/utils/menuMatcher";
 
 /* Chiavi dello stato condiviso */
@@ -13,6 +13,10 @@ export const keys = {
   src: (day: number, meal: "pranzo" | "cena") => `src:antonio:${day}:${meal}`,
   /** Menù di Gilda scelto a mano per un giorno (indice del menù del PDF). */
   gmenu: (day: number) => `gmenu:${day}`,
+  /** Giorno salvato (bloccato): contiene il giorno com'era al momento del salvataggio. */
+  lock: (day: number) => `lock:${day}`,
+  /** Codice (in forma cifrata) per modificare i giorni salvati. */
+  pin: "pin",
   check: (itemKey: string) => `check:${itemKey}`,
   /** Cosa cucinano a pranzo o a cena (testo libero). */
   note: (person: PersonId, day: number, meal: "pranzo" | "cena") => `note:${person}:${day}:${meal}`,
@@ -61,14 +65,35 @@ export function getAlt(
 
 const numberOrUndefined = (v: EntryValue | undefined) => (typeof v === "number" && v >= 0 ? v : undefined);
 
-/** Scelte fatte a mano su quale menù/pasto usare in ogni giorno. */
+/** Il giorno salvato, se c'è. */
+export function readSnapshot(entries: Entries, day: number): DaySnapshot | null {
+  const raw = getValue(entries, keys.lock(day));
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const s = JSON.parse(raw) as DaySnapshot;
+    return s && s.v === 1 && Array.isArray(s.antonio) && Array.isArray(s.gilda) ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Scelte fatte a mano su quale menù/pasto usare in ogni giorno (i giorni salvati restano com'erano). */
 export function forcedPicks(entries: Entries): Forced {
   const days = Array.from({ length: 7 }, (_, d) => d);
-  return {
+  const out: Forced = {
     gilda: days.map((d) => numberOrUndefined(getValue(entries, keys.gmenu(d)))),
     antonioL: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "pranzo")))),
     antonioD: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "cena")))),
   };
+  for (const d of days) {
+    const snap = readSnapshot(entries, d);
+    if (snap) {
+      out.gilda[d] = snap.gMenu;
+      out.antonioL[d] = snap.aL;
+      out.antonioD[d] = snap.aD;
+    }
+  }
+  return out;
 }
 
 /** Testo scritto per un pasto (stringa vuota se non c'è nulla). */

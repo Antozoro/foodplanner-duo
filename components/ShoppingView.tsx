@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Check } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import { DAY_LABELS, DAY_SHORT } from "@/lib/config";
 import { getMode, keys } from "@/lib/entries";
 import type { Household } from "@/lib/useHousehold";
@@ -31,19 +31,22 @@ export function ShoppingView({ hs }: { hs: Household }) {
         <p className="mt-0.5 text-xs text-muted">Tocca un giorno per passare da ON (allenamento) a OFF (riposo).</p>
         <div className="mt-2 grid grid-cols-7 gap-1">
           {DAY_SHORT.map((d, i) => {
+            const locked = hs.week.days[i].locked;
             const on = getMode(hs.entries, i) === "ON";
             return (
               <button
                 key={d}
                 type="button"
                 aria-pressed={on}
-                aria-label={`${DAY_LABELS[i]}: ${on ? "ON, allenamento" : "OFF, riposo"}`}
+                disabled={locked}
+                aria-label={`${DAY_LABELS[i]}: ${on ? "ON, allenamento" : "OFF, riposo"}${locked ? ", giorno salvato" : ""}`}
                 onClick={() => hs.setEntry(keys.mode(i), on ? "OFF" : "ON")}
-                className={`flex min-h-14 flex-col items-center justify-center rounded-xl text-xs font-semibold ${
+                className={`relative flex min-h-14 flex-col items-center justify-center rounded-xl text-xs font-semibold disabled:opacity-60 ${
                   on ? "bg-antonio text-white" : "border border-line bg-canvas text-ink"
                 }`}
               >
                 <span>{d}</span>
+                {locked && <Lock size={10} className="absolute top-1 right-1" aria-hidden />}
                 <span className="text-base leading-none" aria-hidden>
                   {on ? "💪" : "☕"}
                 </span>
