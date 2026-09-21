@@ -3,11 +3,13 @@
 import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Moon, Shuffle, Sun, TriangleAlert } from "lucide-react";
 import { DAY_LABELS, DAY_SHORT, MEALS, PEOPLE } from "@/lib/config";
 import type { ChosenItem, Choice, DayView, MealView } from "@/lib/dayView";
-import { keys } from "@/lib/entries";
+import { getText, keys } from "@/lib/entries";
+import { VEGETABLES } from "@/data/vegetables";
 import type { MealId, Mode, PersonId } from "@/lib/types";
 import type { ReactNode } from "react";
 import type { Household } from "@/lib/useHousehold";
 import { alignKey, formatGrams } from "@/utils/ingredients";
+import { NoteBox } from "./NoteBox";
 import { Segmented } from "./ui";
 
 const TONE = {
@@ -86,9 +88,13 @@ function PersonCard({
   onPick,
   onSource,
   onGildaMenu,
+  vegetable,
+  onVegetable,
 }: {
   view: DayView;
   meal: MealId;
+  vegetable: string;
+  onVegetable: (view: DayView, meal: "pranzo" | "cena", value: string) => void;
   onPick: (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => void;
   onSource: (view: DayView, mealView: MealView, value: number | null) => void;
   onGildaMenu: (view: DayView, value: number | null) => void;
@@ -178,6 +184,31 @@ function PersonCard({
           );
         })}
       </ul>
+
+      {(meal === "pranzo" || meal === "cena") && (
+        <div className="border-t border-line py-3">
+          <label className="block">
+            <span className="text-xs font-medium text-muted">Verdura</span>
+            <span className="relative mt-1 flex min-h-11 items-center rounded-xl bg-canvas px-3 text-[0.92rem] font-medium">
+              <span className="truncate pr-6">{vegetable || "Nessuna"}</span>
+              <ChevronDown size={16} className="absolute right-3" aria-hidden />
+              <select
+                aria-label={`Verdura per ${view.person === "antonio" ? "Antonio" : "Gilda"}`}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                value={vegetable}
+                onChange={(e) => onVegetable(view, meal, e.target.value)}
+              >
+                <option value="">Nessuna</option>
+                {VEGETABLES.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </label>
+        </div>
+      )}
     </section>
   );
 }
@@ -223,6 +254,10 @@ export function KitchenView({
       hs.setEntry(keys.src(view.day, mealView.meal), value);
     }
   };
+  const onVegetable = (view: DayView, m: "pranzo" | "cena", value: string) =>
+    hs.setEntry(keys.veg(view.person, view.day, m), value || null);
+  const vegOf = (person: "antonio" | "gilda") =>
+    meal === "pranzo" || meal === "cena" ? getText(hs.entries, keys.veg(person, day, meal)) : "";
   const onGildaMenu = (view: DayView, value: number | null) => hs.setEntry(keys.gmenu(view.day), value);
 
   const setMorning = (person: PersonId, v: string) => hs.setEntry(keys.morning(person, day), v === "mattina");
@@ -327,9 +362,29 @@ export function KitchenView({
       )}
 
       <div className="grid grid-cols-2 items-start gap-2">
-        <PersonCard view={antonio} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} />
-        <PersonCard view={gilda} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} />
+        <PersonCard view={antonio} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("antonio")} onVegetable={onVegetable} />
+        <PersonCard view={gilda} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("gilda")} onVegetable={onVegetable} />
       </div>
+
+      {(meal === "pranzo" || meal === "cena") && (
+        <section aria-label={`Cosa cucinate a ${meal}`} className="space-y-2 pt-1">
+          <h3 className="px-1 text-sm font-bold">Cosa cucinate a {meal}</h3>
+          <NoteBox
+            key={`antonio-${day}-${meal}`}
+            label={`${meal === "pranzo" ? "Pranzo" : "Cena"} di Antonio`}
+            tone="antonio"
+            value={getText(hs.entries, keys.note("antonio", day, meal))}
+            onCommit={(t) => hs.setEntry(keys.note("antonio", day, meal), t.trim() ? t : null)}
+          />
+          <NoteBox
+            key={`gilda-${day}-${meal}`}
+            label={`${meal === "pranzo" ? "Pranzo" : "Cena"} di Gilda`}
+            tone="gilda"
+            value={getText(hs.entries, keys.note("gilda", day, meal))}
+            onCommit={(t) => hs.setEntry(keys.note("gilda", day, meal), t.trim() ? t : null)}
+          />
+        </section>
+      )}
     </div>
   );
 }

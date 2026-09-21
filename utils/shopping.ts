@@ -1,4 +1,6 @@
 import type { Week } from "@/lib/dayView";
+import { keys } from "@/lib/entries";
+import type { Entries } from "@/lib/types";
 import { normalizeIngredient } from "./ingredients";
 
 export interface ShoppingItem {
@@ -24,4 +26,18 @@ export function buildShopping(week: Week): ShoppingItem[] {
   return [...totals.entries()]
     .map(([name, grams]) => ({ key: name.toLowerCase(), name, grams }))
     .sort((a, b) => a.name.localeCompare(b.name, "it"));
+}
+
+/** Verdure scelte nella settimana (senza quantità: sono libere), in ordine alfabetico. */
+export function buildVegetables(entries: Entries): string[] {
+  const out = new Set<string>();
+  for (let day = 0; day < 7; day++) {
+    for (const person of ["antonio", "gilda"] as const) {
+      for (const meal of ["pranzo", "cena"] as const) {
+        const v = entries[keys.veg(person, day, meal)]?.v;
+        if (typeof v === "string" && v) out.add(v);
+      }
+    }
+  }
+  return [...out].sort((a, b) => a.localeCompare(b, "it"));
 }

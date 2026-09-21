@@ -14,6 +14,10 @@ export const keys = {
   /** Menù di Gilda scelto a mano per un giorno (indice del menù del PDF). */
   gmenu: (day: number) => `gmenu:${day}`,
   check: (itemKey: string) => `check:${itemKey}`,
+  /** Cosa cucinano a pranzo o a cena (testo libero). */
+  note: (person: PersonId, day: number, meal: "pranzo" | "cena") => `note:${person}:${day}:${meal}`,
+  /** Verdura scelta per un pasto. */
+  veg: (person: PersonId, day: number, meal: "pranzo" | "cena") => `veg:${person}:${day}:${meal}`,
 };
 
 /** Unisce due stati: per ogni chiave vince il valore più recente. */
@@ -65,4 +69,10 @@ export function forcedPicks(entries: Entries): Forced {
     antonioL: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "pranzo")))),
     antonioD: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "cena")))),
   };
+}
+
+/** Testo scritto per un pasto (stringa vuota se non c'è nulla). */
+export function getText(entries: Entries, key: string): string {
+  const v = getValue(entries, key);
+  return typeof v === "string" ? v : "";
 }

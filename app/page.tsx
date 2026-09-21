@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChefHat, FileUp, ShoppingBasket } from "lucide-react";
+import { CalendarDays, ChefHat, FileUp, ShoppingBasket } from "lucide-react";
 import { KitchenView } from "@/components/KitchenView";
+import { MenuView } from "@/components/MenuView";
 import { PlansView } from "@/components/PlansView";
 import { ShoppingView } from "@/components/ShoppingView";
 import { SyncBadge } from "@/components/ui";
 import type { MealId } from "@/lib/types";
 import { useHousehold } from "@/lib/useHousehold";
 
-type Tab = "cucina" | "spesa" | "piani";
+type Tab = "cucina" | "menu" | "spesa" | "piani";
 
 const TABS: { id: Tab; label: string; icon: typeof ChefHat }[] = [
   { id: "cucina", label: "In cucina", icon: ChefHat },
+  { id: "menu", label: "Menù", icon: CalendarDays },
   { id: "spesa", label: "Spesa", icon: ShoppingBasket },
   { id: "piani", label: "Piani", icon: FileUp },
 ];
@@ -59,6 +61,8 @@ export default function Home() {
           </p>
         ) : tab === "cucina" ? (
           <KitchenView hs={hs} day={day} meal={meal} onDay={setDay} onMeal={setMeal} today={today} />
+        ) : tab === "menu" ? (
+          <MenuView hs={hs} today={today} />
         ) : tab === "spesa" ? (
           <ShoppingView hs={hs} />
         ) : (

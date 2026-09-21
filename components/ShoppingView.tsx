@@ -6,17 +6,20 @@ import { DAY_LABELS, DAY_SHORT } from "@/lib/config";
 import { getMode, keys } from "@/lib/entries";
 import type { Household } from "@/lib/useHousehold";
 import { formatGrams } from "@/utils/ingredients";
-import { buildShopping } from "@/utils/shopping";
+import { buildShopping, buildVegetables } from "@/utils/shopping";
 
 export function ShoppingView({ hs }: { hs: Household }) {
   const items = useMemo(() => buildShopping(hs.week), [hs.week]);
+  const vegetables = useMemo(() => buildVegetables(hs.entries), [hs.entries]);
 
   const isChecked = (key: string) => hs.entries[keys.check(key)]?.v === true;
-  const checkedCount = items.filter((i) => isChecked(i.key)).length;
+  const vegKey = (name: string) => `verdura:${name.toLowerCase()}`;
+  const allKeys = [...items.map((i) => i.key), ...vegetables.map(vegKey)];
+  const checkedCount = allKeys.filter((k) => isChecked(k)).length;
   const sorted = [...items].sort((a, b) => Number(isChecked(a.key)) - Number(isChecked(b.key)));
 
   const resetChecks = () => {
-    for (const item of items) if (isChecked(item.key)) hs.setEntry(keys.check(item.key), false);
+    for (const k of allKeys) if (isChecked(k)) hs.setEntry(keys.check(k), false);
   };
 
   return (
@@ -57,7 +60,7 @@ export function ShoppingView({ hs }: { hs: Household }) {
               Spesa della settimana
             </h2>
             <p className="text-xs text-muted">
-              {checkedCount} di {items.length} nel carrello
+              {checkedCount} di {allKeys.length} nel carrello
             </p>
           </div>
           <button
@@ -102,6 +105,44 @@ export function ShoppingView({ hs }: { hs: Household }) {
           })}
         </ul>
       </section>
+
+      {vegetables.length > 0 && (
+        <section aria-labelledby="veg-title">
+          <div className="mb-2 px-1">
+            <h2 id="veg-title" className="text-lg font-bold">
+              Verdure
+            </h2>
+            <p className="text-xs text-muted">Libere, senza quantità.</p>
+          </div>
+          <ul className="overflow-hidden rounded-[22px] border border-line bg-surface">
+            {vegetables.map((name, idx) => {
+              const k = vegKey(name);
+              const checked = isChecked(k);
+              return (
+                <li key={k} className={idx > 0 ? "border-t border-line" : ""}>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={checked}
+                    onClick={() => hs.setEntry(keys.check(k), !checked)}
+                    className="flex min-h-14 w-full items-center gap-3 px-3.5 text-left"
+                  >
+                    <span
+                      className={`grid size-6 shrink-0 place-items-center rounded-md border-2 ${
+                        checked ? "border-ok bg-ok text-white" : "border-muted"
+                      }`}
+                      aria-hidden
+                    >
+                      {checked && <Check size={16} strokeWidth={3} />}
+                    </span>
+                    <span className={`flex-1 text-[0.98rem] font-medium ${checked ? "text-muted line-through" : ""}`}>{name}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
