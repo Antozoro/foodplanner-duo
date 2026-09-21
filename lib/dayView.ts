@@ -10,7 +10,11 @@ export type Plans = Record<PersonId, DietPlan>;
 
 export interface Choice {
   value: number;
+  /** Descrizione completa (pranzo e cena). */
   label: string;
+  /** Solo menù di Gilda: descrizione del pasto che compare a pranzo / a cena (già con lo scambio del mattino). */
+  lunch?: string;
+  dinner?: string;
 }
 
 export interface ChosenItem {
@@ -94,6 +98,13 @@ function uniqueLabels(labels: string[]): string[] {
     seen.set(l, n);
     return n > 1 ? `${l} (${n})` : l;
   });
+}
+
+/** Se due voci sono uguali, aggiunge tra parentesi l'altro pasto per distinguerle. */
+function disambiguate(main: string[], other: string[], otherName: string): string[] {
+  const count = new Map<string, number>();
+  for (const m of main) count.set(m, (count.get(m) ?? 0) + 1);
+  return main.map((m, i) => ((count.get(m) ?? 0) > 1 ? `${m} (${otherName}: ${other[i]})` : m));
 }
 
 function slotsOf(plan: DietPlan, menu: number, meal: MealId): Slot[] {
@@ -212,9 +223,12 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
     // Le voci sono scritte come le vedi a schermo: con l'allenamento al mattino pranzo e cena sono scambiati
     const gLunch: MealId = f.gildaMorning ? "cena" : "pranzo";
     const gDinner: MealId = f.gildaMorning ? "pranzo" : "cena";
-    const gLabels = uniqueLabels(
-      plans.gilda.days.map((d) => `Pranzo: ${describeMeal(d[gLunch])}. Cena: ${describeMeal(d[gDinner])}`),
-    );
+    const lunches = plans.gilda.days.map((d) => describeMeal(d[gLunch]));
+    const dinners = plans.gilda.days.map((d) => describeMeal(d[gDinner]));
+    // se due menù hanno lo stesso pranzo (o la stessa cena) aggiungo l'altro pasto per distinguerli
+    const lunchLabels = uniqueLabels(disambiguate(lunches, dinners, "cena"));
+    const dinnerLabels = uniqueLabels(disambiguate(dinners, lunches, "pranzo"));
+    const gLabels = uniqueLabels(lunches.map((l, i) => `Pranzo: ${l}. Cena: ${dinners[i]}`));
     const gilda: DayView = {
       person: "gilda",
       day,
@@ -222,7 +236,7 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
       mode: null,
       morning: f.gildaMorning,
       meals: gMeals,
-      menuChoices: gLabels.map((label, value) => ({ value, label })),
+      menuChoices: gLabels.map((label, value) => ({ value, label, lunch: lunchLabels[value], dinner: dinnerLabels[value] })),
       forcedMenu: forced.gilda[day] !== undefined && forced.gilda[day]! < plans.gilda.days.length,
     };
 

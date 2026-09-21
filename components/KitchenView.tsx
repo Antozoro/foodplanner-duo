@@ -139,7 +139,10 @@ function PersonCard({
             label="Cambia menù"
             forced={view.forcedMenu === true}
             value={view.menuDay}
-            choices={view.menuChoices}
+            choices={view.menuChoices.map((c) => ({
+              value: c.value,
+              label: meal === "pranzo" ? (c.lunch ?? c.label) : meal === "cena" ? (c.dinner ?? c.label) : c.label,
+            }))}
             onChange={(v) => onGildaMenu(view, v)}
           />
         )}
