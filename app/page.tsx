@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { CalendarDays, ChefHat, FileUp, ShoppingBasket } from "lucide-react";
 import { KitchenView } from "@/components/KitchenView";
@@ -50,7 +51,10 @@ export default function Home() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col">
       <header className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-canvas/90 px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 backdrop-blur">
-        <h1 className="text-xl font-bold tracking-tight">FoodPlanner Duo</h1>
+        <h1 className="flex shrink-0 items-center gap-2.5 text-lg font-bold tracking-tight whitespace-nowrap">
+          <Image src="/icon-192.png" alt="" width={34} height={34} priority className="rounded-[10px]" />
+          FoodPlanner Duo
+        </h1>
         <SyncBadge status={hs.status} />
       </header>
 

@@ -4,7 +4,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "FoodPlanner Duo",
-  description: "Piani alimentari settimanali di Antonio e Gilda: cucina e spesa.",
+  description: "Piani alimentari settimanali di Antonio e Gilda: cucina, menù e spesa.",
+  appleWebApp: { capable: true, title: "FoodPlanner", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
