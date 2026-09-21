@@ -23,6 +23,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  /* niente zoom con il doppio tocco */
+  touch-action: manipulation;
 }
 
 body {
@@ -34,8 +36,16 @@ body {
 
 button,
 select,
-input {
+input,
+textarea {
   font: inherit;
+}
+
+/* Sotto i 16px il telefono ingrandisce da solo la pagina quando tocchi un campo o una tendina */
+select,
+input,
+textarea {
+  font-size: 16px;
 }
 
 :focus-visible {
