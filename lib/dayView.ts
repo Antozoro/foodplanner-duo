@@ -209,8 +209,11 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
     }
 
     const antonio: DayView = { person: "antonio", day, menuDay: place.antonioBase[day], mode: f.mode, morning: f.antonioMorning, meals: aMeals };
+    // Le voci sono scritte come le vedi a schermo: con l'allenamento al mattino pranzo e cena sono scambiati
+    const gLunch: MealId = f.gildaMorning ? "cena" : "pranzo";
+    const gDinner: MealId = f.gildaMorning ? "pranzo" : "cena";
     const gLabels = uniqueLabels(
-      plans.gilda.days.map((d) => `Pranzo: ${describeMeal(d.pranzo)}. Cena: ${describeMeal(d.cena)}`),
+      plans.gilda.days.map((d) => `Pranzo: ${describeMeal(d[gLunch])}. Cena: ${describeMeal(d[gDinner])}`),
     );
     const gilda: DayView = {
       person: "gilda",
