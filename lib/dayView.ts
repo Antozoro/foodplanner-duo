@@ -3,18 +3,13 @@ import { forcedPicks, getMode, getMorning, getValue, keys, readSnapshot } from "
 import type { DayMeals, DaySnapshot, DietPlan, Entries, EntryValue, FoodOption, MealId, Mode, PersonId, SnapMeal, Slot } from "./types";
 import { alignKey } from "@/utils/ingredients";
 import { alignMeal, describeMeal, keysOf, OLIO, resolveRepeats, type Cell } from "@/utils/mealAlign";
-import { resolveMeals } from "@/utils/mealResolver";
 import { planPlacement, poolMenus, type DayFlags, type Placement } from "@/utils/menuMatcher";
 
 export type Plans = Record<PersonId, DietPlan>;
 
 export interface Choice {
   value: number;
-  /** Descrizione completa (pranzo e cena). */
   label: string;
-  /** Solo menù di Gilda: descrizione del pasto che compare a pranzo / a cena (già con lo scambio del mattino). */
-  lunch?: string;
-  dinner?: string;
 }
 
 export interface ChosenItem {
@@ -36,7 +31,7 @@ export interface MealView {
   /** Menù del PDF da cui arriva questo pasto. */
   menuIdx: number;
   items: ChosenItem[];
-  /** Solo pranzo e cena di Antonio: i pasti tra cui può scegliere (stesso tipo ON/OFF). */
+  /** Solo pranzo e cena: i pasti tra cui si può scegliere (stesso tipo, per Antonio ON o OFF). */
   sourceChoices?: Choice[];
   forcedSource?: boolean;
 }
@@ -44,14 +39,11 @@ export interface MealView {
 export interface DayView {
   person: PersonId;
   day: number;
-  /** Solo Gilda: menù del PDF usato in questo giorno. */
+  /** Menù "base" usato per colazione, spuntino e merenda (lo stesso da cui viene il pranzo). */
   menuDay: number;
   mode: Mode | null;
   morning: boolean;
   meals: MealView[];
-  /** Solo Gilda: i menù tra cui può scegliere per questo giorno. */
-  menuChoices?: Choice[];
-  forcedMenu?: boolean;
 }
 
 export interface Note {
@@ -95,7 +87,7 @@ export function placementKey(entries: Entries): string {
     .join(".");
   const forced = forcedPicks(entries);
   const locks = Array.from({ length: 7 }, (_, d) => readSnapshot(entries, d)?.savedAt ?? 0).join(",");
-  return `${flags}|${forced.gilda.join(",")}|${forced.antonioL.join(",")}|${forced.antonioD.join(",")}|${locks}`;
+  return `${flags}|${forced.antonioL.join(",")}|${forced.antonioD.join(",")}|${forced.gildaL.join(",")}|${forced.gildaD.join(",")}|${locks}`;
 }
 
 function uniqueLabels(labels: string[]): string[] {
@@ -105,13 +97,6 @@ function uniqueLabels(labels: string[]): string[] {
     seen.set(l, n);
     return n > 1 ? `${l} (${n})` : l;
   });
-}
-
-/** Se due voci sono uguali, aggiunge tra parentesi l'altro pasto per distinguerle. */
-function disambiguate(main: string[], other: string[], otherName: string): string[] {
-  const count = new Map<string, number>();
-  for (const m of main) count.set(m, (count.get(m) ?? 0) + 1);
-  return main.map((m, i) => ((count.get(m) ?? 0) > 1 ? `${m} (${otherName}: ${other[i]})` : m));
 }
 
 function slotsOf(plan: DietPlan, menu: number, meal: MealId): Slot[] {
@@ -125,6 +110,30 @@ interface MealSpec {
   slots: Slot[];
 }
 
+/** Pranzo e cena di una persona in un giorno: da quale menù arrivano (con lo scambio del mattino) e i pasti disponibili per la scelta a mano. */
+function personSpecs(
+  plan: DietPlan,
+  day: number,
+  f: DayFlags,
+  morning: boolean,
+  L: number,
+  D: number,
+  base: number,
+): MealSpec[] {
+  return MEAL_ORDER.map((meal) => {
+    let source: MealId = meal;
+    let menuIdx = base;
+    if (meal === "pranzo") {
+      source = morning ? "cena" : "pranzo";
+      menuIdx = L;
+    } else if (meal === "cena") {
+      source = morning ? "pranzo" : "cena";
+      menuIdx = D;
+    }
+    return { meal, source, menuIdx, slots: slotsOf(plan, menuIdx, source) };
+  });
+}
+
 /**
  * Costruisce la settimana: quale menù/pasto mangia ciascuno in ogni giorno, con gli ingredienti allineati
  * tra Antonio e Gilda, senza ripetere lo stesso ingrediente a pranzo e a cena, e con le scelte fatte a mano
@@ -135,26 +144,14 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
   const forced = forcedPicks(entries);
   const place = placement ?? planPlacement(plans.antonio, plans.gilda, flags, forced);
   const nA = plans.antonio.days.length;
+  const nG = plans.gilda.days.length;
 
   const days: DayPair[] = flags.map((f, day) => {
     const snap = readSnapshot(entries, day);
     if (snap) return pairFromSnapshot(day, snap);
 
-    const gMenu = place.gilda[day];
-    const aSpecs: MealSpec[] = MEAL_ORDER.map((meal) => {
-      let source: MealId = meal;
-      let menuIdx = place.antonioBase[day];
-      if (meal === "pranzo") {
-        source = f.antonioMorning ? "cena" : "pranzo";
-        menuIdx = place.antonioL[day];
-      } else if (meal === "cena") {
-        source = f.antonioMorning ? "pranzo" : "cena";
-        menuIdx = place.antonioD[day];
-      }
-      return { meal, source, menuIdx, slots: slotsOf(plans.antonio, menuIdx, source) };
-    });
-    const gRes = resolveMeals(plans.gilda.days[gMenu] ?? EMPTY_DAY, f.gildaMorning);
-    const gSpecs: MealSpec[] = gRes.map((rm) => ({ meal: rm.meal, source: rm.source, menuIdx: gMenu, slots: rm.slots }));
+    const aSpecs = personSpecs(plans.antonio, day, f, f.antonioMorning, place.antonioL[day], place.antonioD[day], place.antonioBase[day]);
+    const gSpecs = personSpecs(plans.gilda, day, f, f.gildaMorning, place.gildaL[day], place.gildaD[day], place.gildaBase[day]);
 
     // 1) scelta iniziale allineata + 2) scelte a mano + 3) niente ripetizioni tra pranzo e cena
     const aCells: Cell[][] = [];
@@ -201,7 +198,7 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
     });
     const repeats = resolveRepeats(allCells);
 
-    const toMealView = (personId: PersonId, spec: MealSpec, cells: Cell[], ex: boolean[], slotLinks: (number | null)[]): MealView => ({
+    const toMealView = (spec: MealSpec, cells: Cell[], ex: boolean[], slotLinks: (number | null)[]): MealView => ({
       meal: spec.meal,
       source: spec.source,
       swapped: spec.source !== spec.meal,
@@ -216,39 +213,29 @@ export function buildWeek(plans: Plans, entries: Entries, placement?: Placement)
       })),
     });
 
-    const aMeals = MEAL_ORDER.map((_, i) => toMealView("antonio", aSpecs[i], aCells[i], explicit.A[i], links.A[i]));
-    const gMeals = MEAL_ORDER.map((_, i) => toMealView("gilda", gSpecs[i], gCells[i], explicit.G[i], links.G[i]));
+    const aMeals = MEAL_ORDER.map((_, i) => toMealView(aSpecs[i], aCells[i], explicit.A[i], links.A[i]));
+    const gMeals = MEAL_ORDER.map((_, i) => toMealView(gSpecs[i], gCells[i], explicit.G[i], links.G[i]));
 
-    // Scelte possibili per pranzo e cena di Antonio (stessi pasti ON o OFF)
-    const pool = poolMenus(f.mode, nA);
-    for (const meal of ["pranzo", "cena"] as const) {
-      const mv = aMeals.find((m) => m.meal === meal)!;
-      const labels = uniqueLabels(pool.map((m) => describeMeal(slotsOf(plans.antonio, m, mv.source))));
+    // Scelte possibili per pranzo e cena, per ciascuno: Antonio tra i pasti dello stesso tipo (ON/OFF),
+    // Gilda tra tutti i suoi 7 menù.
+    const antonioPool = poolMenus(f.mode, nA);
+    const gildaPool = Array.from({ length: nG }, (_, i) => i);
+    for (const [meals, plan, pool, forcedKey] of [
+      [aMeals, plans.antonio, antonioPool, "antonioL"] as const,
+      [aMeals, plans.antonio, antonioPool, "antonioD"] as const,
+      [gMeals, plans.gilda, gildaPool, "gildaL"] as const,
+      [gMeals, plans.gilda, gildaPool, "gildaD"] as const,
+    ]) {
+      const meal = forcedKey.endsWith("L") ? "pranzo" : "cena";
+      const mv = meals.find((m) => m.meal === meal)!;
+      const labels = uniqueLabels(pool.map((m) => describeMeal(slotsOf(plan, m, mv.source))));
       mv.sourceChoices = pool.map((m, k) => ({ value: m, label: labels[k] }));
-      const fv = forced[meal === "pranzo" ? "antonioL" : "antonioD"][day];
+      const fv = forced[forcedKey][day];
       mv.forcedSource = fv !== undefined && pool.includes(fv);
     }
 
     const antonio: DayView = { person: "antonio", day, menuDay: place.antonioBase[day], mode: f.mode, morning: f.antonioMorning, meals: aMeals };
-    // Le voci sono scritte come le vedi a schermo: con l'allenamento al mattino pranzo e cena sono scambiati
-    const gLunch: MealId = f.gildaMorning ? "cena" : "pranzo";
-    const gDinner: MealId = f.gildaMorning ? "pranzo" : "cena";
-    const lunches = plans.gilda.days.map((d) => describeMeal(d[gLunch]));
-    const dinners = plans.gilda.days.map((d) => describeMeal(d[gDinner]));
-    // se due menù hanno lo stesso pranzo (o la stessa cena) aggiungo l'altro pasto per distinguerli
-    const lunchLabels = uniqueLabels(disambiguate(lunches, dinners, "cena"));
-    const dinnerLabels = uniqueLabels(disambiguate(dinners, lunches, "pranzo"));
-    const gLabels = uniqueLabels(lunches.map((l, i) => `Pranzo: ${l}. Cena: ${dinners[i]}`));
-    const gilda: DayView = {
-      person: "gilda",
-      day,
-      menuDay: gMenu,
-      mode: null,
-      morning: f.gildaMorning,
-      meals: gMeals,
-      menuChoices: gLabels.map((label, value) => ({ value, label, lunch: lunchLabels[value], dinner: dinnerLabels[value] })),
-      forcedMenu: forced.gilda[day] !== undefined && forced.gilda[day]! < plans.gilda.days.length,
-    };
+    const gilda: DayView = { person: "gilda", day, menuDay: place.gildaBase[day], mode: null, morning: f.gildaMorning, meals: gMeals };
 
     return { day, antonio, gilda, notes: buildNotes(plans, antonio, gilda, repeats), locked: false };
   });
@@ -297,7 +284,7 @@ function viewFromSnapshot(person: PersonId, day: number, snap: DaySnapshot): Day
   return {
     person,
     day,
-    menuDay: person === "antonio" ? snap.aBase : snap.gMenu,
+    menuDay: person === "antonio" ? snap.aBase : snap.gBase,
     mode: person === "antonio" ? snap.mode : null,
     morning: person === "antonio" ? snap.antonioMorning : snap.gildaMorning,
     meals: src.map((sm) => ({
@@ -335,17 +322,19 @@ const snapMeals = (view: DayView): SnapMeal[] =>
 
 /** Fotografia del giorno così com'è adesso, da salvare. */
 export function makeSnapshot(pair: DayPair): DaySnapshot {
-  const menuOf = (meal: MealId) => pair.antonio.meals.find((m) => m.meal === meal)!.menuIdx;
+  const menuOf = (view: DayView, meal: MealId) => view.meals.find((m) => m.meal === meal)!.menuIdx;
   return {
     v: 1,
     savedAt: Date.now(),
     mode: pair.antonio.mode ?? "ON",
     antonioMorning: pair.antonio.morning,
     gildaMorning: pair.gilda.morning,
-    gMenu: pair.gilda.menuDay,
-    aL: menuOf("pranzo"),
-    aD: menuOf("cena"),
+    aL: menuOf(pair.antonio, "pranzo"),
+    aD: menuOf(pair.antonio, "cena"),
     aBase: pair.antonio.menuDay,
+    gL: menuOf(pair.gilda, "pranzo"),
+    gD: menuOf(pair.gilda, "cena"),
+    gBase: pair.gilda.menuDay,
     antonio: snapMeals(pair.antonio),
     gilda: snapMeals(pair.gilda),
     notes: pair.notes,
@@ -358,14 +347,11 @@ export function makeSnapshot(pair: DayPair): DaySnapshot {
  */
 export function lockUpdates(pair: DayPair): [string, EntryValue][] {
   const day = pair.day;
-  const out: [string, EntryValue][] = [
-    [keys.lock(day), JSON.stringify(makeSnapshot(pair))],
-    [keys.gmenu(day), pair.gilda.menuDay],
-  ];
-  for (const meal of ["pranzo", "cena"] as const) {
-    out.push([keys.src(day, meal), pair.antonio.meals.find((m) => m.meal === meal)!.menuIdx]);
-  }
+  const out: [string, EntryValue][] = [[keys.lock(day), JSON.stringify(makeSnapshot(pair))]];
   for (const view of [pair.antonio, pair.gilda]) {
+    for (const meal of ["pranzo", "cena"] as const) {
+      out.push([keys.src(view.person, day, meal), view.meals.find((m) => m.meal === meal)!.menuIdx]);
+    }
     for (const mv of view.meals) {
       for (const item of mv.items) out.push([keys.alt(view.person, day, mv.menuIdx, mv.source, item.slotIdx), item.optionIdx]);
     }

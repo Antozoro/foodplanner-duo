@@ -9,10 +9,8 @@ export const keys = {
   alt: (person: PersonId, day: number, menuDay: number, meal: MealId, slotIdx: number) =>
     `alt:${person}:${day}:${menuDay}:${meal}:${slotIdx}`,
   altPrefix: (person: PersonId) => `alt:${person}:`,
-  /** Pasto di Antonio scelto a mano per pranzo o cena (indice del menù del PDF). */
-  src: (day: number, meal: "pranzo" | "cena") => `src:antonio:${day}:${meal}`,
-  /** Menù di Gilda scelto a mano per un giorno (indice del menù del PDF). */
-  gmenu: (day: number) => `gmenu:${day}`,
+  /** Pasto scelto a mano per pranzo o cena (indice del menù del PDF). */
+  src: (person: PersonId, day: number, meal: "pranzo" | "cena") => `src:${person}:${day}:${meal}`,
   /** Giorno salvato (bloccato): contiene il giorno com'era al momento del salvataggio. */
   lock: (day: number) => `lock:${day}`,
   /** Codice (in forma cifrata) per modificare i giorni salvati. */
@@ -81,16 +79,18 @@ export function readSnapshot(entries: Entries, day: number): DaySnapshot | null 
 export function forcedPicks(entries: Entries): Forced {
   const days = Array.from({ length: 7 }, (_, d) => d);
   const out: Forced = {
-    gilda: days.map((d) => numberOrUndefined(getValue(entries, keys.gmenu(d)))),
-    antonioL: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "pranzo")))),
-    antonioD: days.map((d) => numberOrUndefined(getValue(entries, keys.src(d, "cena")))),
+    antonioL: days.map((d) => numberOrUndefined(getValue(entries, keys.src("antonio", d, "pranzo")))),
+    antonioD: days.map((d) => numberOrUndefined(getValue(entries, keys.src("antonio", d, "cena")))),
+    gildaL: days.map((d) => numberOrUndefined(getValue(entries, keys.src("gilda", d, "pranzo")))),
+    gildaD: days.map((d) => numberOrUndefined(getValue(entries, keys.src("gilda", d, "cena")))),
   };
   for (const d of days) {
     const snap = readSnapshot(entries, d);
     if (snap) {
-      out.gilda[d] = snap.gMenu;
       out.antonioL[d] = snap.aL;
       out.antonioD[d] = snap.aD;
+      out.gildaL[d] = snap.gL;
+      out.gildaD[d] = snap.gD;
     }
   }
   return out;

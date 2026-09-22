@@ -10,28 +10,32 @@ export interface DayFlags {
   gildaMorning: boolean;
 }
 
-/** Scelte fatte a mano (un valore per giorno, undefined = decide l'app). */
+/** Scelte fatte a mano: pranzo e cena, per ciascuno, scelti indipendentemente (un valore per giorno). */
 export interface Forced {
-  gilda: (number | undefined)[];
   antonioL: (number | undefined)[];
   antonioD: (number | undefined)[];
+  gildaL: (number | undefined)[];
+  gildaD: (number | undefined)[];
 }
 
 /**
- * Per ogni giorno (0 = Lun): quale menù di Gilda, e da quale menù del PDF arrivano
- * il pranzo, la cena e gli altri pasti di Antonio.
+ * Per ogni giorno (0 = Lun): da quale menù del PDF arrivano il pranzo e la cena di ciascuno
+ * (scelti indipendentemente), più un menù "base" per gli altri pasti (colazione, spuntino, merenda).
  */
 export interface Placement {
-  gilda: number[];
   antonioL: number[];
   antonioD: number[];
   antonioBase: number[];
+  gildaL: number[];
+  gildaD: number[];
+  gildaBase: number[];
 }
 
 export const noForced = (n = 7): Forced => ({
-  gilda: Array(n).fill(undefined),
   antonioL: Array(n).fill(undefined),
   antonioD: Array(n).fill(undefined),
+  gildaL: Array(n).fill(undefined),
+  gildaD: Array(n).fill(undefined),
 });
 
 /** Tipo di un menù di Antonio: i primi 4 del PDF sono ON, gli altri OFF. */
@@ -76,11 +80,13 @@ const cellsOf = (person: "A" | "G", meal: "L" | "D", slots: Slot[]): Cell[] =>
   slots.map((s) => ({ person, meal, keys: keysOf(s), idx: 0, locked: false, link: null }));
 
 /**
- * Decide, per ogni giorno, quale menù di Gilda e quali pasti di Antonio usare per far coincidere
- * gli ingredienti, senza ripetere lo stesso ingrediente a pranzo e a cena:
- * - i 7 menù di Gilda possono andare in qualsiasi giorno (ognuno una volta);
- * - Antonio, in un giorno ON, prende pranzo e cena dai pasti ON; in un giorno OFF dai pasti OFF.
- *   Ogni pranzo ON si scambia con un altro pranzo ON, ogni cena ON con un'altra cena ON (e lo stesso per OFF);
+ * Decide, per ogni giorno, quali pasti di Antonio e di Gilda usare per far coincidere gli ingredienti,
+ * senza ripetere lo stesso ingrediente a pranzo e a cena:
+ * - Antonio, in un giorno ON, prende pranzo e cena dai pasti ON (di qualsiasi menù del PDF);
+ *   in un giorno OFF dai pasti OFF. Ogni pranzo si scambia con un altro pranzo dello stesso tipo,
+ *   ogni cena con un'altra cena dello stesso tipo;
+ * - Gilda prende pranzo e cena da uno qualsiasi dei suoi 7 menù, scelti indipendentemente
+ *   (un pranzo può venire da un menù diverso da quello della cena);
  * - le scelte fatte a mano restano fisse e il resto si organizza intorno.
  */
 export function planPlacement(
@@ -95,23 +101,24 @@ export function planPlacement(
   const nA = antonio.days.length;
   const natural = (n: number) => Array.from({ length: nDays }, (_, d) => Math.min(d, Math.max(0, n - 1)));
   const fallback = (): Placement => ({
-    gilda: natural(nG),
     antonioL: natural(nA),
     antonioD: natural(nA),
     antonioBase: natural(nA),
+    gildaL: natural(nG),
+    gildaD: natural(nG),
+    gildaBase: natural(nG),
   });
-  if (nG !== nDays || nA === 0) return fallback();
+  if (nA === 0 || nG === 0) return fallback();
 
-  const pools: Record<Mode, number[]> = {
-    ON: poolMenus("ON", nA, onDays),
-    OFF: poolMenus("OFF", nA, onDays),
-  };
-  const count: Record<Mode, number> = {
+  const poolsA: Record<Mode, number[]> = { ON: poolMenus("ON", nA, onDays), OFF: poolMenus("OFF", nA, onDays) };
+  const poolG = Array.from({ length: nG }, (_, i) => i);
+  const countA: Record<Mode, number> = {
     ON: flags.filter((f) => f.mode === "ON").length,
     OFF: flags.filter((f) => f.mode === "OFF").length,
   };
-  const srcL = (f: DayFlags): "pranzo" | "cena" => (f.antonioMorning ? "cena" : "pranzo");
-  const srcD = (f: DayFlags): "pranzo" | "cena" => (f.antonioMorning ? "pranzo" : "cena");
+
+  const srcL = (f: DayFlags): MealId => (f.antonioMorning ? "cena" : "pranzo");
+  const srcD = (f: DayFlags): MealId => (f.antonioMorning ? "pranzo" : "cena");
   const gSrcL = (f: DayFlags): MealId => (f.gildaMorning ? "cena" : "pranzo");
   const gSrcD = (f: DayFlags): MealId => (f.gildaMorning ? "pranzo" : "cena");
 
@@ -121,166 +128,283 @@ export function planPlacement(
   const gMeal = (menu: number, m: MealId): Slot[] => (gilda.days[menu] as DayMeals)[m] ?? [];
 
   // Scelte a mano valide
-  const fixedG: (number | undefined)[] = [];
-  const seenG = new Set<number>();
-  for (let d = 0; d < nDays; d++) {
-    const v = forced.gilda[d];
-    if (v !== undefined && v >= 0 && v < nG && !seenG.has(v)) {
-      fixedG.push(v);
-      seenG.add(v);
-    } else fixedG.push(undefined);
-  }
-  const reserved = [...seenG].reduce((m, g) => m | (1 << g), 0);
-  const validA = (v: number | undefined, d: number) => (v !== undefined && pools[flags[d].mode].includes(v) ? v : undefined);
-  const fixedL = flags.map((_, d) => validA(forced.antonioL[d], d));
-  const fixedD = flags.map((_, d) => validA(forced.antonioD[d], d));
+  const validA = (v: number | undefined, d: number) => (v !== undefined && poolsA[flags[d].mode].includes(v) ? v : undefined);
+  const validG = (v: number | undefined) => (v !== undefined && v >= 0 && v < nG ? v : undefined);
+  const fixedAL = flags.map((_, d) => validA(forced.antonioL[d], d));
+  const fixedAD = flags.map((_, d) => validA(forced.antonioD[d], d));
+  const fixedGL = flags.map(() => undefined as number | undefined).map((_, d) => validG(forced.gildaL[d]));
+  const fixedGD = flags.map((_, d) => validG(forced.gildaD[d]));
 
-  // Conflitti che non si possono evitare nemmeno con le alternative
-  const aConfMemo = new Map<string, boolean>();
-  const aConflict = (l: number, sl: MealId, dd: number, sd: MealId) => {
-    const key = `${l}${sl}${dd}${sd}`;
-    let v = aConfMemo.get(key);
+  // Conflitti (stesso ingrediente a pranzo e a cena) che non si possono evitare nemmeno con le alternative
+  const confMemo = new Map<string, boolean>();
+  const conflict = (
+    mealOf: (menu: number, meal: MealId) => Slot[],
+    tag: "A" | "G",
+    mL: number,
+    sL: MealId,
+    mD: number,
+    sD: MealId,
+  ) => {
+    const key = `${tag}${mL}${sL}${mD}${sD}`;
+    let v = confMemo.get(key);
     if (v === undefined) {
-      v = resolveRepeats([...cellsOf("A", "L", aMeal(l, sl)), ...cellsOf("A", "D", aMeal(dd, sd))]).length > 0;
-      aConfMemo.set(key, v);
-    }
-    return v;
-  };
-  const gConfMemo = new Map<string, boolean>();
-  const gConflict = (g: number, f: DayFlags) => {
-    const key = `${g}${f.gildaMorning}`;
-    let v = gConfMemo.get(key);
-    if (v === undefined) {
-      v = resolveRepeats([...cellsOf("G", "L", gMeal(g, gSrcL(f))), ...cellsOf("G", "D", gMeal(g, gSrcD(f)))]).length > 0;
-      gConfMemo.set(key, v);
+      v = resolveRepeats([...cellsOf(tag, "L", mealOf(mL, sL)), ...cellsOf(tag, "D", mealOf(mD, sD))]).length > 0;
+      confMemo.set(key, v);
     }
     return v;
   };
 
-  // Tabella dei punteggi (giorno, menù di Gilda, pranzo e cena di Antonio), calcolata una volta sola
-  const table: number[][][][] = flags.map((f, d) =>
-    gSets.map((gs, g) =>
-      aSets.map((asL, l) =>
-        aSets.map((asD, dd) => {
-          let s = (affinity(gs[gSrcL(f)], asL[srcL(f)]) + affinity(gs[gSrcD(f)], asD[srcD(f)])) * 100;
-          if (aConflict(l, srcL(f), dd, srcD(f))) s -= 5000;
-          if (gConflict(g, f)) s -= 5000;
-          if (g === d) s += 1;
-          if (l === d) s += 1;
-          if (dd === d) s += 1;
-          return s;
-        }),
+  // Tabella dei punteggi (giorno × pranzo/cena di Antonio × pranzo/cena di Gilda), calcolata una volta per giorno
+  const table = flags.map((f, d) => {
+    const AL = poolsA[f.mode];
+    const GL = poolG;
+    return AL.map((aL) =>
+      AL.map((aD) =>
+        GL.map((gL) =>
+          GL.map((gD) => {
+            let s = (affinity(gSets[gL][gSrcL(f)], aSets[aL][srcL(f)]) + affinity(gSets[gD][gSrcD(f)], aSets[aD][srcD(f)])) * 100;
+            if (conflict(aMeal, "A", aL, srcL(f), aD, srcD(f))) s -= 5000;
+            if (conflict(gMeal, "G", gL, gSrcL(f), gD, gSrcD(f))) s -= 5000;
+            if (aL === d) s += 1;
+            if (aD === d) s += 1;
+            if (gL === d) s += 1;
+            if (gD === d) s += 1;
+            return s;
+          }),
+        ),
       ),
-    ),
-  );
+    );
+  });
 
-  // Ogni (tipo, pranzo/cena d'origine, menù) ha un contatore d'uso; li codifico in un solo numero
+  // Un contatore d'uso per ogni (persona, pranzo/cena, menù); li codifico in un solo numero quando sono pochi
   const slotOf = new Map<string, number>();
-  for (const mode of ["ON", "OFF"] as Mode[])
-    for (const src of ["pranzo", "cena"])
-      for (const m of pools[mode]) slotOf.set(`${mode}${src}${m}`, slotOf.size);
+  for (const mode of ["ON", "OFF"] as Mode[]) for (const src of ["pranzo", "cena"]) for (const m of poolsA[mode]) slotOf.set(`A${mode}${src}${m}`, slotOf.size);
+  for (const src of ["pranzo", "cena"]) for (const m of poolG) slotOf.set(`G${src}${m}`, slotOf.size);
   const numSlots = slotOf.size;
-  const BASE = 8; // un contatore non supera mai 7 (un uso al giorno)
-  const compact = numSlots <= 14;
-  const pw = Array.from({ length: numSlots }, (_, i) => BASE ** i);
-  const pwTotal = BASE ** numSlots;
+
+  let callBudget = 400_000;
+  class BudgetExceeded extends Error {}
 
   const run = (extra: number): Placement | null => {
-    const cap: Record<Mode, number> = {
-      ON: Math.max(1, Math.ceil(count.ON / Math.max(1, pools.ON.length))) + extra,
-      OFF: Math.max(1, Math.ceil(count.OFF / Math.max(1, pools.OFF.length))) + extra,
+    const capA: Record<Mode, number> = {
+      ON: Math.max(1, Math.ceil(countA.ON / Math.max(1, poolsA.ON.length))) + extra,
+      OFF: Math.max(1, Math.ceil(countA.OFF / Math.max(1, poolsA.OFF.length))) + extra,
     };
+    const capG = Math.max(1, Math.ceil(nDays / Math.max(1, poolG.length))) + extra;
+    // Codifico lo stato d'uso in un solo numero: ogni contatore va da 0 al suo cap, quindi la base
+    // può restare piccola (di solito 2) e il codice resta ben dentro l'intervallo sicuro di un Number.
+    const maxCap = Math.max(capA.ON, capA.OFF, capG);
+    const BASE = maxCap + 1;
+    const compact = numSlots * Math.log2(BASE) <= 50;
+    const pw = Array.from({ length: numSlots }, (_, i) => BASE ** i);
+    const pwTotal = BASE ** numSlots;
     const usage: number[] = Array(numSlots).fill(0);
     let code = 0;
-    const memo: Map<number | string, { v: number; g: number; l: number; d: number }>[] = Array.from({ length: nDays }, () => new Map());
-    const NONE = { v: -Infinity, g: -1, l: -1, d: -1 };
-    const TERMINAL = { v: 0, g: -1, l: -1, d: -1 };
+    const memo: Map<number | string, { v: number; aL: number; aD: number; gL: number; gD: number }>[] = Array.from(
+      { length: nDays },
+      () => new Map(),
+    );
+    const NONE = { v: -Infinity, aL: -1, aD: -1, gL: -1, gD: -1 };
+    const TERMINAL = { v: 0, aL: -1, aD: -1, gL: -1, gD: -1 };
 
-    // per ogni giorno: pasti disponibili e contatori (calcolati una volta per non allocare nella ricerca)
     const dayInfo = flags.map((f, d) => {
-      const pl = pools[f.mode];
+      const AL = poolsA[f.mode];
+      const GL = poolG;
       return {
-        mode: f.mode,
-        menus: pl,
-        sl: pl.map((m) => slotOf.get(`${f.mode}${srcL(f)}${m}`)!),
-        sd: pl.map((m) => slotOf.get(`${f.mode}${srcD(f)}${m}`)!),
-        fl: fixedL[d],
-        fd: fixedD[d],
-        fg: fixedG[d],
+        AL,
+        GL,
+        sAL: AL.map((m) => slotOf.get(`A${f.mode}pranzo${m}`)!),
+        sAD: AL.map((m) => slotOf.get(`A${f.mode}cena${m}`)!),
+        sGL: GL.map((m) => slotOf.get(`Gpranzo${m}`)!),
+        sGD: GL.map((m) => slotOf.get(`Gcena${m}`)!),
+        fAL: fixedAL[d],
+        fAD: fixedAD[d],
+        fGL: fixedGL[d],
+        fGD: fixedGD[d],
       };
     });
 
-    const solve = (d: number, mask: number): { v: number; g: number; l: number; d: number } => {
+    const solve = (d: number): { v: number; aL: number; aD: number; gL: number; gD: number } => {
+      // Conto ogni chiamata (anche quelle già in cache): è il numero di rami esplorati, il vero
+      // costo, non solo gli stati nuovi da calcolare.
+      if (--callBudget <= 0) throw new BudgetExceeded();
       if (d === nDays) return TERMINAL;
-      const key: number | string = compact ? mask * pwTotal + code : `${mask}|${usage.join("")}`;
+      const key: number | string = compact ? code * nDays + d : `${d}|${usage.join(",")}`;
       const hit = memo[d].get(key);
       if (hit) return hit;
       const info = dayInfo[d];
-      const limit = cap[info.mode];
       const tab = table[d];
 
-      let bv = -Infinity;
-      let bg = -1;
-      let bl = -1;
-      let bd = -1;
-      for (let li = 0; li < info.menus.length; li++) {
-        const l = info.menus[li];
-        if (info.fl !== undefined ? l !== info.fl : usage[info.sl[li]] >= limit) continue;
-        const il = info.sl[li];
-        usage[il]++;
-        code += pw[il];
-        for (let di = 0; di < info.menus.length; di++) {
-          const dd = info.menus[di];
-          if (info.fd !== undefined ? dd !== info.fd : usage[info.sd[di]] >= limit) continue;
-          const id = info.sd[di];
-          usage[id]++;
-          code += pw[id];
-          for (let g = 0; g < nG; g++) {
-            if (info.fg !== undefined ? g !== info.fg : mask & (1 << g) || reserved & (1 << g)) continue;
-            const v = tab[g][l][dd] + solve(d + 1, mask | (1 << g)).v;
-            if (v > bv) {
-              bv = v;
-              bg = g;
-              bl = l;
-              bd = dd;
+      let best = NONE;
+      for (let li = 0; li < info.AL.length; li++) {
+        const aL = info.AL[li];
+        if (info.fAL !== undefined ? aL !== info.fAL : usage[info.sAL[li]] >= capA[flags[d].mode]) continue;
+        usage[info.sAL[li]]++;
+        code += pw[info.sAL[li]];
+        for (let di = 0; di < info.AL.length; di++) {
+          const aD = info.AL[di];
+          if (info.fAD !== undefined ? aD !== info.fAD : usage[info.sAD[di]] >= capA[flags[d].mode]) continue;
+          usage[info.sAD[di]]++;
+          code += pw[info.sAD[di]];
+          for (let gli = 0; gli < info.GL.length; gli++) {
+            const gL = info.GL[gli];
+            if (info.fGL !== undefined ? gL !== info.fGL : usage[info.sGL[gli]] >= capG) continue;
+            usage[info.sGL[gli]]++;
+            code += pw[info.sGL[gli]];
+            for (let gdi = 0; gdi < info.GL.length; gdi++) {
+              const gD = info.GL[gdi];
+              if (info.fGD !== undefined ? gD !== info.fGD : usage[info.sGD[gdi]] >= capG) continue;
+              usage[info.sGD[gdi]]++;
+              code += pw[info.sGD[gdi]];
+              const v = tab[li][di][gli][gdi] + solve(d + 1).v;
+              if (v > best.v) best = { v, aL, aD, gL, gD };
+              usage[info.sGD[gdi]]--;
+              code -= pw[info.sGD[gdi]];
             }
+            usage[info.sGL[gli]]--;
+            code -= pw[info.sGL[gli]];
           }
-          usage[id]--;
-          code -= pw[id];
+          usage[info.sAD[di]]--;
+          code -= pw[info.sAD[di]];
         }
-        usage[il]--;
-        code -= pw[il];
+        usage[info.sAL[li]]--;
+        code -= pw[info.sAL[li]];
       }
-      const res = bg < 0 ? NONE : { v: bv, g: bg, l: bl, d: bd };
-      memo[d].set(key, res);
-      return res;
+      memo[d].set(key, best);
+      return best;
     };
 
-    const out: Placement = { gilda: [], antonioL: [], antonioD: [], antonioBase: [] };
-    let mask = 0;
+    const out: Placement = { antonioL: [], antonioD: [], antonioBase: [], gildaL: [], gildaD: [], gildaBase: [] };
     for (let d = 0; d < nDays; d++) {
-      const step = solve(d, mask);
-      if (step.g < 0 || step.v === -Infinity) return null;
-      out.gilda.push(step.g);
-      out.antonioL.push(step.l);
-      out.antonioD.push(step.d);
-      out.antonioBase.push(step.l);
-      mask |= 1 << step.g;
+      const step = solve(d);
+      if (step.aL < 0 || step.v === -Infinity) return null;
+      out.antonioL.push(step.aL);
+      out.antonioD.push(step.aD);
+      out.antonioBase.push(step.aL);
+      out.gildaL.push(step.gL);
+      out.gildaD.push(step.gD);
+      out.gildaBase.push(step.gL);
       const f = flags[d];
-      const il = slotOf.get(`${f.mode}${srcL(f)}${step.l}`)!;
-      const id = slotOf.get(`${f.mode}${srcD(f)}${step.d}`)!;
-      usage[il]++;
-      code += pw[il];
-      usage[id]++;
-      code += pw[id];
+      usage[slotOf.get(`A${f.mode}pranzo${step.aL}`)!]++;
+      code += pw[slotOf.get(`A${f.mode}pranzo${step.aL}`)!];
+      usage[slotOf.get(`A${f.mode}cena${step.aD}`)!]++;
+      code += pw[slotOf.get(`A${f.mode}cena${step.aD}`)!];
+      usage[slotOf.get(`Gpranzo${step.gL}`)!]++;
+      code += pw[slotOf.get(`Gpranzo${step.gL}`)!];
+      usage[slotOf.get(`Gcena${step.gD}`)!]++;
+      code += pw[slotOf.get(`Gcena${step.gD}`)!];
     }
     return out;
   };
 
-  // Se le scelte a mano non lasciano abbastanza pasti, permetto di ripetere qualche pasto
-  for (let extra = 0; extra <= nDays; extra++) {
-    const res = run(extra);
-    if (res) return res;
+  // Se le scelte a mano non lasciano abbastanza pasti, permetto di ripetere qualche pasto.
+  // Se la ricerca esatta è troppo onerosa (distribuzioni molto sbilanciate), passo a un metodo
+  // più rapido e un po' meno rifinito, così l'app resta sempre veloce.
+  try {
+    for (let extra = 0; extra <= nDays; extra++) {
+      const res = run(extra);
+      if (res) return res;
+    }
+  } catch (e) {
+    if (!(e instanceof BudgetExceeded)) throw e;
   }
-  return fallback();
+  return greedyPlacement(
+    nDays,
+    flags,
+    poolsA,
+    poolG,
+    fixedAL,
+    fixedAD,
+    fixedGL,
+    fixedGD,
+    srcL,
+    srcD,
+    gSrcL,
+    gSrcD,
+    (aL, sL, aD, sD) => conflict(aMeal, "A", aL, sL, aD, sD),
+    (gL, sL, gD, sD) => conflict(gMeal, "G", gL, sL, gD, sD),
+    (g, a) => affinity(g, a),
+    gSets,
+    aSets,
+  );
+}
+
+/**
+ * Assegna pranzo e cena giorno per giorno, il migliore possibile in quel momento (senza guardare
+ * avanti). Più veloce della ricerca esatta ma un po' meno rifinito: si usa solo quando la
+ * distribuzione dei giorni è così sbilanciata che la ricerca esatta impiegherebbe troppo tempo.
+ */
+function greedyPlacement(
+  nDays: number,
+  flags: DayFlags[],
+  poolsA: Record<Mode, number[]>,
+  poolG: number[],
+  fixedAL: (number | undefined)[],
+  fixedAD: (number | undefined)[],
+  fixedGL: (number | undefined)[],
+  fixedGD: (number | undefined)[],
+  srcL: (f: DayFlags) => MealId,
+  srcD: (f: DayFlags) => MealId,
+  gSrcL: (f: DayFlags) => MealId,
+  gSrcD: (f: DayFlags) => MealId,
+  aConflict: (l: number, sl: MealId, dd: number, sd: MealId) => boolean,
+  gConflict: (l: number, sl: MealId, dd: number, sd: MealId) => boolean,
+  affinity: (g: MealSets, a: MealSets) => number,
+  gSets: Record<MealId, MealSets>[],
+  aSets: Record<MealId, MealSets>[],
+): Placement {
+  const countA: Record<Mode, number> = {
+    ON: flags.filter((f) => f.mode === "ON").length,
+    OFF: flags.filter((f) => f.mode === "OFF").length,
+  };
+  const capA: Record<Mode, number> = {
+    ON: Math.max(1, Math.ceil(countA.ON / Math.max(1, poolsA.ON.length))),
+    OFF: Math.max(1, Math.ceil(countA.OFF / Math.max(1, poolsA.OFF.length))),
+  };
+  const capG = Math.max(1, Math.ceil(nDays / Math.max(1, poolG.length)));
+  const useA = new Map<string, number>();
+  const useG = new Map<string, number>();
+  const bump = (m: Map<string, number>, key: string) => m.set(key, (m.get(key) ?? 0) + 1);
+
+  const out: Placement = { antonioL: [], antonioD: [], antonioBase: [], gildaL: [], gildaD: [], gildaBase: [] };
+  for (let d = 0; d < nDays; d++) {
+    const f = flags[d];
+    const AL = poolsA[f.mode];
+    const GL = poolG;
+    const kA = (src: MealId, m: number) => `${f.mode}${src}${m}`;
+    const kG = (src: MealId, m: number) => `${src}${m}`;
+    const candA = (fixed: number | undefined, src: MealId) =>
+      fixed !== undefined ? [fixed] : AL.filter((m) => (useA.get(kA(src, m)) ?? 0) < capA[f.mode]);
+    const candG = (fixed: number | undefined, src: MealId) =>
+      fixed !== undefined ? [fixed] : GL.filter((m) => (useG.get(kG(src, m)) ?? 0) < capG);
+
+    let best = { v: -Infinity, aL: AL[0], aD: AL[0], gL: GL[0], gD: GL[0] };
+    for (const aL of candA(fixedAL[d], srcL(f)).length ? candA(fixedAL[d], srcL(f)) : AL) {
+      for (const aD of candA(fixedAD[d], srcD(f)).length ? candA(fixedAD[d], srcD(f)) : AL) {
+        for (const gL of candG(fixedGL[d], gSrcL(f)).length ? candG(fixedGL[d], gSrcL(f)) : GL) {
+          for (const gD of candG(fixedGD[d], gSrcD(f)).length ? candG(fixedGD[d], gSrcD(f)) : GL) {
+            let s = (affinity(gSets[gL][gSrcL(f)], aSets[aL][srcL(f)]) + affinity(gSets[gD][gSrcD(f)], aSets[aD][srcD(f)])) * 100;
+            if (aConflict(aL, srcL(f), aD, srcD(f))) s -= 5000;
+            if (gConflict(gL, gSrcL(f), gD, gSrcD(f))) s -= 5000;
+            if (aL === d) s += 1;
+            if (aD === d) s += 1;
+            if (gL === d) s += 1;
+            if (gD === d) s += 1;
+            if (s > best.v) best = { v: s, aL, aD, gL, gD };
+          }
+        }
+      }
+    }
+    out.antonioL.push(best.aL);
+    out.antonioD.push(best.aD);
+    out.antonioBase.push(best.aL);
+    out.gildaL.push(best.gL);
+    out.gildaD.push(best.gD);
+    out.gildaBase.push(best.gL);
+    bump(useA, kA(srcL(f), best.aL));
+    bump(useA, kA(srcD(f), best.aD));
+    bump(useG, kG(gSrcL(f), best.gL));
+    bump(useG, kG(gSrcD(f), best.gD));
+  }
+  return out;
 }

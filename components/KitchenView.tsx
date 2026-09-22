@@ -92,7 +92,6 @@ function PersonCard({
   meal,
   onPick,
   onSource,
-  onGildaMenu,
   vegetable,
   onVegetable,
   locked,
@@ -104,7 +103,6 @@ function PersonCard({
   onVegetable: (view: DayView, meal: "pranzo" | "cena", value: string) => void;
   onPick: (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => void;
   onSource: (view: DayView, mealView: MealView, value: number | null) => void;
-  onGildaMenu: (view: DayView, value: number | null) => void;
 }) {
   const tone = TONE[view.person];
   const name = PEOPLE.find((p) => p.id === view.person)!.name;
@@ -130,25 +128,13 @@ function PersonCard({
             </span>
           )}
         </div>
-        {!locked && view.person === "antonio" && mealView.sourceChoices && (
+        {!locked && mealView.sourceChoices && (
           <ChangeChip
             label="Cambia pasto"
             forced={mealView.forcedSource === true}
             value={mealView.menuIdx}
             choices={mealView.sourceChoices}
             onChange={(v) => onSource(view, mealView, v)}
-          />
-        )}
-        {!locked && view.person === "gilda" && view.menuChoices && (
-          <ChangeChip
-            label="Cambia menù"
-            forced={view.forcedMenu === true}
-            value={view.menuDay}
-            choices={view.menuChoices.map((c) => ({
-              value: c.value,
-              label: meal === "pranzo" ? (c.lunch ?? c.label) : meal === "cena" ? (c.dinner ?? c.label) : c.label,
-            }))}
-            onChange={(v) => onGildaMenu(view, v)}
           />
         )}
       </header>
@@ -267,14 +253,13 @@ export function KitchenView({
 
   const onSource = (view: DayView, mealView: MealView, value: number | null) => {
     if (mealView.meal === "pranzo" || mealView.meal === "cena") {
-      hs.setEntry(keys.src(view.day, mealView.meal), value);
+      hs.setEntry(keys.src(view.person, view.day, mealView.meal), value);
     }
   };
   const onVegetable = (view: DayView, m: "pranzo" | "cena", value: string) =>
     hs.setEntry(keys.veg(view.person, view.day, m), value || null);
   const vegOf = (person: "antonio" | "gilda") =>
     meal === "pranzo" || meal === "cena" ? getText(hs.entries, keys.veg(person, day, meal)) : "";
-  const onGildaMenu = (view: DayView, value: number | null) => hs.setEntry(keys.gmenu(view.day), value);
 
   /** Salva il giorno: se non c'è ancora un codice lo si sceglie adesso. */
   const onSaveDay = () => {
@@ -430,8 +415,8 @@ export function KitchenView({
       )}
 
       <div className="grid grid-cols-2 items-start gap-2">
-        <PersonCard locked={locked} view={antonio} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("antonio")} onVegetable={onVegetable} />
-        <PersonCard locked={locked} view={gilda} meal={meal} onPick={onPick} onSource={onSource} onGildaMenu={onGildaMenu} vegetable={vegOf("gilda")} onVegetable={onVegetable} />
+        <PersonCard locked={locked} view={antonio} meal={meal} onPick={onPick} onSource={onSource} vegetable={vegOf("antonio")} onVegetable={onVegetable} />
+        <PersonCard locked={locked} view={gilda} meal={meal} onPick={onPick} onSource={onSource} vegetable={vegOf("gilda")} onVegetable={onVegetable} />
       </div>
 
       {(meal === "pranzo" || meal === "cena") && (

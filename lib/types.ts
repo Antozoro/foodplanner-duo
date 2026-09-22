@@ -60,11 +60,13 @@ export interface DaySnapshot {
   mode: Mode;
   antonioMorning: boolean;
   gildaMorning: boolean;
-  /** Menù di Gilda e pasti di Antonio (indici dei menù del PDF), per non spostare gli altri giorni. */
-  gMenu: number;
+  /** Pasti di Antonio e di Gilda (indici dei menù del PDF), per non spostare gli altri giorni. */
   aL: number;
   aD: number;
   aBase: number;
+  gL: number;
+  gD: number;
+  gBase: number;
   antonio: SnapMeal[];
   gilda: SnapMeal[];
   notes: { meal: MealId; text: string }[];
