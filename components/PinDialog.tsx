@@ -10,8 +10,14 @@ export function PinDialog({
   mode,
   onSubmit,
   onClose,
+  title,
+  description,
+  submitLabel,
 }: {
   mode: "create" | "verify";
+  title?: string;
+  description?: string;
+  submitLabel?: string;
   /** Restituisce un messaggio d'errore, oppure null se è andato tutto bene. */
   onSubmit: (pin: string) => Promise<string | null>;
   onClose: () => void;
@@ -61,12 +67,13 @@ export function PinDialog({
       >
         <h2 id="pin-title" className="flex items-center gap-2 text-lg font-bold">
           <Lock size={18} aria-hidden />
-          {mode === "create" ? "Scegli un codice" : "Inserisci il codice"}
+          {title ?? (mode === "create" ? "Scegli un codice" : "Inserisci il codice")}
         </h2>
         <p className="mt-1 text-sm text-muted">
-          {mode === "create"
-            ? "4 cifre, uguale per tutti e due i telefoni. Serve per modificare i giorni salvati. Segnatelo, non si può recuperare."
-            : "Per modificare un giorno salvato serve il codice di 4 cifre."}
+          {description ??
+            (mode === "create"
+              ? "4 cifre, uguale per tutti e due i telefoni. Serve per modificare i giorni salvati. Segnatelo, non si può recuperare."
+              : "Per modificare un giorno salvato serve il codice di 4 cifre.")}
         </p>
 
         <label className="mt-4 block text-sm font-medium">
@@ -109,7 +116,7 @@ export function PinDialog({
             disabled={busy}
             className="min-h-12 flex-1 rounded-full bg-ink px-5 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {mode === "create" ? "Salva il giorno" : "Sblocca"}
+            {submitLabel ?? (mode === "create" ? "Salva il giorno" : "Sblocca")}
           </button>
           <button type="button" onClick={onClose} className="min-h-12 rounded-full border border-line px-5 text-sm font-semibold">
             Annulla

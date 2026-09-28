@@ -15,6 +15,8 @@ export const keys = {
   lock: (day: number) => `lock:${day}`,
   /** Codice (in forma cifrata) per modificare i giorni salvati. */
   pin: "pin",
+  /** Settimana salvata nella libreria (JSON). */
+  week: (id: string) => `wk:${id}`,
   check: (itemKey: string) => `check:${itemKey}`,
   /** Cosa cucinano a pranzo o a cena (testo libero). */
   note: (person: PersonId, day: number, meal: "pranzo" | "cena") => `note:${person}:${day}:${meal}`,

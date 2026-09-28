@@ -6,6 +6,7 @@ import { DAY_LABELS, MEALS, PEOPLE } from "@/lib/config";
 import type { DietPlan, PersonId } from "@/lib/types";
 import type { Household } from "@/lib/useHousehold";
 import { extractPdfLines } from "@/utils/pdfText";
+import { WeeksView } from "./WeeksView";
 import { parsePlanLines, type ParsedPlan } from "@/utils/parsePlan";
 import { formatGrams } from "@/utils/ingredients";
 
@@ -202,12 +203,20 @@ function PlanCard({ person, hs }: { person: PersonId; hs: Household }) {
 
 export function PlansView({ hs }: { hs: Household }) {
   return (
-    <div className="space-y-3">
-      <p className="px-1 text-sm text-muted">
-        Quando il nutrizionista cambia un piano, importa il nuovo PDF. Sostituisce solo il piano della persona scelta e l&apos;altro resta com&apos;è.
-      </p>
-      <PlanCard person="antonio" hs={hs} />
-      <PlanCard person="gilda" hs={hs} />
+    <div className="space-y-8">
+      <WeeksView hs={hs} />
+      <section aria-labelledby="plans-title" className="space-y-3">
+        <div className="px-1">
+          <h2 id="plans-title" className="text-lg font-bold">
+            Piani del nutrizionista
+          </h2>
+          <p className="text-sm text-muted">
+            Quando il nutrizionista cambia un piano, importa il nuovo PDF. Sostituisce solo il piano della persona scelta e l&apos;altro resta com&apos;è.
+          </p>
+        </div>
+        <PlanCard person="antonio" hs={hs} />
+        <PlanCard person="gilda" hs={hs} />
+      </section>
     </div>
   );
 }
