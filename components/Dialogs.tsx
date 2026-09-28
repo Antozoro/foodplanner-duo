@@ -153,3 +153,39 @@ export function DayPickDialog({
     </Modal>
   );
 }
+
+/** Per invertire un giorno con un altro. */
+export function SwapDialog({ day, onSubmit, onClose }: { day: number; onSubmit: (other: number) => void; onClose: () => void }) {
+  const [other, setOther] = useState(day === 0 ? 1 : 0);
+  return (
+    <Modal title={`Inverti ${DAY_LABELS[day]}`} onClose={onClose}>
+      <p className="mt-1 text-sm text-muted">
+        I due giorni si scambiano tutto: ON/OFF, orari degli allenamenti, pasti, alternative, verdure e testi. Gli altri giorni non cambiano.
+      </p>
+      <label className="mt-4 block text-sm font-medium">
+        Inverti con
+        <select
+          className="mt-1 block w-full rounded-xl border border-line bg-canvas px-3 py-2.5 text-ink"
+          value={other}
+          onChange={(e) => setOther(Number(e.target.value))}
+        >
+          {DAY_LABELS.map((d, i) =>
+            i === day ? null : (
+              <option key={d} value={i} className="bg-surface text-ink">
+                {d}
+              </option>
+            ),
+          )}
+        </select>
+      </label>
+      <div className="mt-5 flex gap-2">
+        <button type="button" onClick={() => onSubmit(other)} className={primary}>
+          Inverti
+        </button>
+        <button type="button" onClick={onClose} className={secondary}>
+          Annulla
+        </button>
+      </div>
+    </Modal>
+  );
+}

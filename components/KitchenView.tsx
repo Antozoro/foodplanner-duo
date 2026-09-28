@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeftRight, ChevronDown, Coffee, Dumbbell, Lock, Moon, Pencil, Shuffle, Sun, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DAY_LABELS, DAY_SHORT, MEALS, PEOPLE } from "@/lib/config";
 import { lockUpdates, type ChosenItem, type Choice, type DayView, type MealView } from "@/lib/dayView";
 import { hashPin } from "@/lib/pin";
@@ -11,6 +11,8 @@ import type { MealId, Mode, PersonId } from "@/lib/types";
 import type { ReactNode } from "react";
 import type { Household } from "@/lib/useHousehold";
 import { alignKey, formatGrams } from "@/utils/ingredients";
+import { swapDays } from "@/lib/swap";
+import { SwapDialog } from "./Dialogs";
 import { NoteBox } from "./NoteBox";
 import { PinDialog } from "./PinDialog";
 import { Segmented } from "./ui";
@@ -232,6 +234,29 @@ export function KitchenView({
   const locked = pair.locked;
   const [dialog, setDialog] = useState<null | "create" | "verify">(null);
   const pinHash = getText(hs.entries, keys.pin);
+  const [swap, setSwap] = useState<null | { step: "pick" } | { step: "pin"; other: number }>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 4500);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  /** Inverte questo giorno con un altro: ognuno prende tutto ciò che aveva l'altro. */
+  const applySwap = (other: number) => {
+    hs.setEntries(swapDays(hs.plans, hs.entries, hs.week, day, other));
+    setSwap(null);
+    setFlash(`${DAY_LABELS[day]} e ${DAY_LABELS[other]} invertiti.`);
+  };
+  const pickSwap = (other: number) => {
+    if ((pair.locked || hs.week.days[other].locked) && pinHash) setSwap({ step: "pin", other });
+    else applySwap(other);
+  };
+  const verifySwap = (other: number) => async (pin: string) => {
+    if ((await hashPin(pin)) !== pinHash) return "Codice sbagliato.";
+    applySwap(other);
+    return null;
+  };
 
   /** Cambia un ingrediente: l'altra persona passa in automatico allo stesso ingrediente, se il suo pasto lo prevede. */
   const onPick = (view: DayView, mealView: MealView, item: ChosenItem, optionIdx: number) => {
@@ -362,6 +387,22 @@ export function KitchenView({
         </div>
       )}
 
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setSwap({ step: "pick" })}
+          className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-muted"
+        >
+          <ArrowLeftRight size={14} aria-hidden />
+          Inverti questo giorno con un altro
+        </button>
+      </div>
+      {flash && (
+        <p className="rounded-2xl bg-surface px-3 py-2 text-sm font-semibold text-ok" role="status">
+          {flash}
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-2 rounded-[22px] border border-line bg-canvas p-2">
         <div className="min-w-0">
           <p className="px-1 text-sm font-bold text-antonio">Antonio</p>
@@ -441,6 +482,17 @@ export function KitchenView({
         </section>
       )}
 
+      {swap?.step === "pick" && <SwapDialog day={day} onClose={() => setSwap(null)} onSubmit={pickSwap} />}
+      {swap?.step === "pin" && (
+        <PinDialog
+          mode="verify"
+          title="Un giorno è salvato"
+          description={`Per invertire ${DAY_LABELS[day]} e ${DAY_LABELS[swap.other]} serve il codice, perché uno dei due è un giorno salvato.`}
+          submitLabel="Inverti"
+          onClose={() => setSwap(null)}
+          onSubmit={verifySwap(swap.other)}
+        />
+      )}
       {dialog && (
         <PinDialog mode={dialog} onSubmit={dialog === "create" ? createPinAndSave : unlockDay} onClose={() => setDialog(null)} />
       )}
